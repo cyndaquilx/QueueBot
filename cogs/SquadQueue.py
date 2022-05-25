@@ -429,6 +429,42 @@ class SquadQueue(commands.Cog):
         mentions = " ".join([ctx.guild.get_role(role).mention for role in lounge_staff_roles])
         await ctx.send(mentions)
 
+    @commands.command()
+    async def fc(self, ctx, *, name=None):
+        """Displays the FC for the given player. Only works in thread channels for SQ rooms."""
+        is_room_thread = False
+        for mogi in self.ongoing_events.values():
+            if mogi.is_room_thread(ctx.channel.id):
+                is_room_thread = True
+                break
+        if not is_room_thread:
+            return
+        if name is None:
+            name = ctx.author.display_name
+        player_fc = await mk8dx_150cc_fc(self.bot.config, name)
+        await ctx.send(player_fc)
+
+    @commands.command()
+    async def scoreboard(self, ctx):
+        """Displays the scoreboard of the room. Only works in thread channels for SQ rooms."""
+        is_room_thread = False
+        room = None
+        for mogi in self.ongoing_events.values():
+            if mogi.is_room_thread(ctx.channel.id):
+                room = mogi.get_room_from_thread(ctx.channel.id)
+                is_room_thread = True
+                break
+        if not is_room_thread:
+            return
+        msg = "`#RESULTS\n"
+        for i, team in enumerate(room.teams):
+            msg += f"Team {i+1} - {chr(ord('A')+i)}\n"
+            for player in team.players:
+                msg += f"{player.lounge_name} [] 0\n"
+            msg += "\n"
+        msg += f"`Fill out the scores for each player and then use the `!submit` command to submit the table."
+        await ctx.send(msg)
+        
     async def makeRoomsLogic(self, mogi, open_time:int, started_automatically=False):
         if open_time >= 60 or open_time < 0:
             await mogi.mogi_channel.send("Please specify a valid time (in minutes) for rooms to open (00-59)")
@@ -466,7 +502,7 @@ class SquadQueue(commands.Cog):
         for i in range(num_rooms):
             room_name = f"SQ{mogi.sq_id} Room {i+1}"
             msg = f"`Room {i+1}`\n"
-            scoreboard = f"Table: `!scoreboard {teams_per_room} "
+            scoreboard = f"Table: `!scoreboard`"
             mentions = ""
             start_index = int(i*teams_per_room)
             for j in range(teams_per_room):
@@ -476,9 +512,9 @@ class SquadQueue(commands.Cog):
                 msg += f" ({int(team.avg_mmr)} MMR)\n"
                 mentions += " ".join([p.member.mention for p in team.players])
                 mentions += " "
-                scoreboard += ",".join([p.lounge_name for p in team.players])
-                if j+1 < teams_per_room:
-                    scoreboard += ","
+                #scoreboard += ",".join([p.lounge_name for p in team.players])
+                #if j+1 < teams_per_room:
+                #    scoreboard += ","
             room_msg = msg
             mentions += " ".join([m.mention for m in extra_members if m is not None])
             room_msg += f"{scoreboard}`\n"
@@ -489,6 +525,7 @@ class SquadQueue(commands.Cog):
             thread_type = 1
             try:
                 thread_msg = await mogi.mogi_channel.send(msg)
+                #can only make private threads in servers with boost level 2 LOL!
                 if mogi.mogi_channel.guild.premium_tier >= 2:
                     room_channel = await mogi.mogi_channel.create_thread(name=room_name,
                                                                          auto_archive_duration=60,
@@ -523,6 +560,7 @@ class SquadQueue(commands.Cog):
     @commands.guild_only()
     @commands.max_concurrency(number=1, wait=True)
     async def makeRooms(self, ctx, openTime:int):
+        """Makes thread channels for SQ rooms."""
         if not await self.has_roles(ctx.author, ctx.guild.id, ctx.bot.config):
             return
         mogi = self.get_mogi(ctx)
@@ -592,6 +630,7 @@ class SquadQueue(commands.Cog):
             print(e)
 
     def getTime(self, schedule_time:str, timezone:str):
+        """Returns a DateTime object representing the UTC equivalent of the given time."""
         if schedule_time.isnumeric():
             schedule_time += ":00"
         utc_offset = time.altzone if time.localtime().tm_isdst > 0 else time.timezone
@@ -620,6 +659,7 @@ class SquadQueue(commands.Cog):
                        size:Choice[int], sq_id: int,
                              channel:discord.TextChannel,
                        schedule_time:str, timezone:str):
+        """Schedules an SQ event in the given channel at the given time."""
         if not await self.has_roles(interaction.user, interaction.guild_id, self.bot.config):
             await interaction.response.send_message("You do not have permissions to use this command",ephemeral=True)
             return
@@ -682,20 +722,6 @@ class SquadQueue(commands.Cog):
             await ctx.send("```<t:" + str(int(time.mktime(actual_time.timetuple()))) + ":F>```")
         except (ValueError, OverflowError):
             await ctx.send("I couldn't figure out the date and time for your event. Try making it a bit more clear for me.")
-
-    @commands.command()
-    async def fc(self, ctx, *, name=None):
-        is_room_thread = False
-        for mogi in self.ongoing_events.values():
-            if mogi.is_room_thread(ctx.channel.id):
-                is_room_thread = True
-                break
-        if not is_room_thread:
-            return
-        if name is None:
-            name = ctx.author.display_name
-        player_fc = await mk8dx_150cc_fc(self.bot.config, name)
-        await ctx.send(player_fc)
 
         
     @commands.command(name="sync_server")

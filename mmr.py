@@ -26,3 +26,16 @@ async def mk8dx_150cc_mmr(config, members):
 
 async def get_mmr(config, members):
     return await mk8dx_150cc_mmr(config, members)
+
+async def mk8dx_150cc_fc(config, name):
+    base_url = config["url"] + '/api/player?'
+    request_url = base_url + f'name={name}'
+    async with aiohttp.ClientSession() as session:
+        async with session.get(request_url, headers=headers) as resp:
+            if resp.status != 200:
+                return None
+            player_data = await resp.json()
+            if 'switchFc' not in player_data.keys():
+                return None
+            return player_data['switchFc']
+

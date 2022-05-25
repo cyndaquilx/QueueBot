@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 import collections
 import time
 import json
-from mmr import get_mmr
+from mmr import get_mmr, mk8dx_150cc_fc
 from mogi_objects import Mogi, Team, Player, Room
 
 #Scheduled_Event = collections.namedtuple('Scheduled_Event', 'size time started mogi_channel')
@@ -58,7 +58,7 @@ class SquadQueue(commands.Cog):
         else:
             sendmsg = await ctx.send(msg)
             if delay > 0:
-                await sentmsg.delete(delay=delay)
+                await sendmsg.delete(delay=delay)
 
     #goes thru the msg queue for each channel and combines them
     #into as few messsages as possible, then sends them
@@ -431,7 +431,7 @@ class SquadQueue(commands.Cog):
 
     async def makeRoomsLogic(self, mogi, open_time:int, started_automatically=False):
         if open_time >= 60 or open_time < 0:
-            await mogi_channel.send("Please specify a valid time (in minutes) for rooms to open (00-59)")
+            await mogi.mogi_channel.send("Please specify a valid time (in minutes) for rooms to open (00-59)")
             return
         if mogi.making_rooms_run and started_automatically:
             return
@@ -682,6 +682,20 @@ class SquadQueue(commands.Cog):
             await ctx.send("```<t:" + str(int(time.mktime(actual_time.timetuple()))) + ":F>```")
         except (ValueError, OverflowError):
             await ctx.send("I couldn't figure out the date and time for your event. Try making it a bit more clear for me.")
+
+    @commands.command()
+    async def fc(self, ctx, *, name=None):
+        is_room_thread = False
+        for mogi in self.ongoing_events.values():
+            if mogi.is_room_thread(ctx.channel.id):
+                is_room_thread = True
+                break
+        if not is_room_thread:
+            return
+        if name is None:
+            name = ctx.author.display_name
+        player_fc = await mk8dx_150cc_fc(self.bot.config, name)
+        await ctx.send(player_fc)
 
         
     @commands.command(name="sync_server")

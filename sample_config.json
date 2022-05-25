@@ -1,0 +1,26 @@
+{
+	"token": "insert token here",
+	"application_id": 767487399176962058,
+	
+	"admin_roles": {"445404006177570829": ["Administrator", "Lounge Staff"]},
+	"staff_roles": {"445404006177570829": [910528103225389107]},
+	
+	"mogichannel": 772517883107475516,
+
+	"members_for_channels": {"445404006177570829": [743532508343304242, 459860530618695681, 735910635082219570]},
+
+	"channel_category_position": 5,
+	"channels_per_category": 25,
+
+	"queue_messages": true,
+	"sec_between_queue_msgs": 2,
+
+	"username": "username",
+	"password": "password",
+	"url": "https://www.mk8dx-lounge.com",
+
+	"TIME_ADJUSTMENT": 0,
+	"QUEUE_OPEN_TIME": 75,
+	"JOINING_TIME": 60,
+	"EXTENSION_TIME": 5
+}

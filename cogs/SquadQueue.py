@@ -376,6 +376,13 @@ class SquadQueue(commands.Cog):
         mogi.is_automated = False
         await ctx.send("Mogi is now closed; players can no longer join or drop from the event")
 
+    async def endMogi(self, mogi_channel):
+        mogi = self.ongoing_events[mogi_channel]
+        for room in mogi.rooms:
+            if room.thread is not None:
+                await room.thread.edit(archived=True, locked=True)
+        del self.ongoing_events[mogi_channel]
+
     @commands.command()
     @commands.guild_only()
     async def end(self, ctx):
@@ -384,10 +391,11 @@ class SquadQueue(commands.Cog):
         mogi = self.get_mogi(ctx)
         if mogi is None:
             return
-        for room in mogi.rooms:
-            if room.thread is not None:
-                await room.thread.edit(archived=True, locked=True)
-        del self.ongoing_events[ctx.channel]
+        #for room in mogi.rooms:
+        #    if room.thread is not None:
+        #        await room.thread.edit(archived=True, locked=True)
+        #del self.ongoing_events[ctx.channel]
+        await self.endMogi(mogi.mogi_channel)
         await ctx.send(f"{ctx.author.display_name} has ended the mogi")
         
 
@@ -415,6 +423,7 @@ class SquadQueue(commands.Cog):
     @commands.command()
     @commands.cooldown(1, 60, commands.BucketType.channel)
     async def staff(self, ctx):
+        """Calls staff to the current channel. Only works in thread channels for SQ rooms."""
         is_room_thread = False
         for mogi in self.ongoing_events.values():
             if mogi.is_room_thread(ctx.channel.id):
@@ -442,7 +451,10 @@ class SquadQueue(commands.Cog):
         if name is None:
             name = ctx.author.display_name
         player_fc = await mk8dx_150cc_fc(self.bot.config, name)
-        await ctx.send(player_fc)
+        if player_fc is not None:
+            await ctx.send(player_fc)
+        else:
+            await ctx.send("Player not found!")
 
     @commands.command()
     async def scoreboard(self, ctx):
@@ -517,7 +529,7 @@ class SquadQueue(commands.Cog):
                 #    scoreboard += ","
             room_msg = msg
             mentions += " ".join([m.mention for m in extra_members if m is not None])
-            room_msg += f"{scoreboard}`\n"
+            room_msg += f"{scoreboard}\n"
             room_msg += ("\nDecide a host amongst yourselves; room open at :%02d, penalty at :%02d, start by :%02d. Good luck!\n\n"
                         % (open_time, pen_time, start_time))
             room_msg += "\nIf you need staff's assistance, use the `!staff` command in this channel.\n"
@@ -580,7 +592,7 @@ class SquadQueue(commands.Cog):
                         to_remove.append(i)
                         await mogi.mogi_channel.send(f"Because there is an ongoing event right now, the following event has been removed:\n{self.get_event_str(mogi)}\n")
                     else:
-                        if mogi.started:
+                        if self.ongoing_events[mogi.mogi_channel].started:
                             await self.endMogi(mogi.mogi_channel)
                         to_remove.append(i)
                         self.ongoing_events[mogi.mogi_channel] = mogi
@@ -668,13 +680,11 @@ class SquadQueue(commands.Cog):
             await interaction.response.send_message("That time is in the past, please schedule a time in the future")
             return
         
-        
-        
         event_start_time = actual_time.astimezone() - self.QUEUE_OPEN_TIME
         event_end_time = event_start_time + self.JOINING_TIME
         if event_start_time < discord.utils.utcnow():
             event_start_time = discord.utils.utcnow()
-        discord_event = await interaction.guild.create_scheduled_event(name=f"SQ #{sq_id} Queue Open",
+        discord_event = await interaction.guild.create_scheduled_event(name=f"SQ #{sq_id}: {size.name} gathering players",
                                                        start_time = event_start_time,
                                                        end_time = event_end_time,
                                                        entity_type = discord.EntityType.external,

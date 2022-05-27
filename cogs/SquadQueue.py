@@ -379,8 +379,11 @@ class SquadQueue(commands.Cog):
     async def endMogi(self, mogi_channel):
         mogi = self.ongoing_events[mogi_channel]
         for room in mogi.rooms:
-            if room.thread is not None:
-                await room.thread.edit(archived=True, locked=True)
+            if room.thread is not None and not room.thread.archived:
+                try:
+                    await room.thread.edit(archived=True, locked=True)
+                except Exception as e:
+                    pass
         del self.ongoing_events[mogi_channel]
 
     @commands.command()
@@ -592,8 +595,9 @@ class SquadQueue(commands.Cog):
                         to_remove.append(i)
                         await mogi.mogi_channel.send(f"Because there is an ongoing event right now, the following event has been removed:\n{self.get_event_str(mogi)}\n")
                     else:
-                        if self.ongoing_events[mogi.mogi_channel].started:
-                            await self.endMogi(mogi.mogi_channel)
+                        if mogi.mogi_channel in self.ongoing_events.keys():
+                            if self.ongoing_events[mogi.mogi_channel].started:
+                                await self.endMogi(mogi.mogi_channel)
                         to_remove.append(i)
                         self.ongoing_events[mogi.mogi_channel] = mogi
                         mogi.started = True

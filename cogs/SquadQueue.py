@@ -9,6 +9,7 @@ import time
 import json
 from mmr import get_mmr, mk8dx_150cc_fc
 from mogi_objects import Mogi, Team, Player, Room
+import asyncio
 
 #Scheduled_Event = collections.namedtuple('Scheduled_Event', 'size time started mogi_channel')
 
@@ -137,7 +138,8 @@ class SquadQueue(commands.Cog):
                 for i, pl in enumerate(player_team.players):
                     msg += f"`{i+1}.` {pl.lounge_name} ({pl.mmr} MMR)\n"
             await self.queue_or_send(ctx, msg)
-            await self.ongoing_mogi_checks()
+            #await self.ongoing_mogi_checks()
+            await self.check_num_teams(mogi)
             return
 
         # logic when player is not already in a squad
@@ -379,9 +381,16 @@ class SquadQueue(commands.Cog):
     async def endMogi(self, mogi_channel):
         mogi = self.ongoing_events[mogi_channel]
         for room in mogi.rooms:
-            if room.thread is not None and not room.thread.archived:
+            if room.thread is None:
+                return
+            if not room.thread.archived:
                 try:
                     await room.thread.edit(archived=True, locked=True)
+                except Exception as e:
+                   pass
+            elif not room.thread.locked:
+                try:
+                    await room.thread.edit(locked=True)
                 except Exception as e:
                     pass
         del self.ongoing_events[mogi_channel]
@@ -479,6 +488,17 @@ class SquadQueue(commands.Cog):
             msg += "\n"
         msg += f"`Fill out the scores for each player and then use the `!submit` command to submit the table."
         await ctx.send(msg)
+
+    @commands.command()
+    async def lt(self, ctx):
+        is_room_thread = False
+        for mogi in self.ongoing_events.values():
+            if mogi.is_room_thread(ctx.channel.id):
+                is_room_thread = True
+                break
+        if not is_room_thread:
+            return
+        await ctx.send("Stats bot cannot read messages in threads, so this command will not work. Please use `!scoreboard` to make the table.")
         
     async def makeRoomsLogic(self, mogi, open_time:int, started_automatically=False):
         if open_time >= 60 or open_time < 0:
@@ -514,7 +534,10 @@ class SquadQueue(commands.Cog):
                 extra_members.append(mogi.mogi_channel.guild.get_member(m))
     
         rooms = []
+        mogi.rooms = rooms
         for i in range(num_rooms):
+            if i > 0 and i % 50 == 0:
+                await mogi.mogi_channel.send("Additional rooms will be created in 3-5 minutes.")
             room_name = f"SQ{mogi.sq_id} Room {i+1}"
             msg = f"`Room {i+1}`\n"
             scoreboard = f"Table: `!scoreboard`"
@@ -538,19 +561,19 @@ class SquadQueue(commands.Cog):
             room_msg += "\nIf you need staff's assistance, use the `!staff` command in this channel.\n"
             room_msg += mentions
             thread_type = 1
-            try:
-                thread_msg = await mogi.mogi_channel.send(msg)
+            try: 
                 #can only make private threads in servers with boost level 2 LOL!
                 if mogi.mogi_channel.guild.premium_tier >= 2:
                     room_channel = await mogi.mogi_channel.create_thread(name=room_name,
                                                                          auto_archive_duration=60,
                                                                          invitable=False)
                 else:
+                    thread_msg = await mogi.mogi_channel.send(msg)
                     room_channel = await mogi.mogi_channel.create_thread(name=room_name,
                                                                          message=thread_msg,
                                                                          auto_archive_duration=60)
+                    thread_type = 0
                 await room_channel.send(room_msg)
-                thread_type = 0
             except Exception as e:
                 print(e)
                 err_msg = f"\nAn error has occurred while creating the room channel; please contact your opponents in DM or another channel\n"
@@ -606,6 +629,17 @@ class SquadQueue(commands.Cog):
                         await mogi.mogi_channel.send(f"A {mogi.size}v{mogi.size} mogi has been started - @here Type `!c`, `!d`, or `!list`")
             for ind in reversed(to_remove):
                 del channel[ind]
+
+    async def check_num_teams(self, mogi):
+        if not mogi.gathering or not mogi.is_automated:
+            return
+        cur_time = datetime.now()
+        if mogi.start_time - self.QUEUE_OPEN_TIME + self.JOINING_TIME <= cur_time:
+            numLeftoverTeams = mogi.count_registered() % int((12/mogi.size))
+            if numLeftoverTeams == 0:
+                mogi.gathering = False
+                await self.lockdown(mogi.mogi_channel)
+                await mogi.mogi_channel.send("A sufficient amount of teams has been reached, so the mogi has been closed to extra teams. Rooms will be made within the next minute.")
 
 
     async def ongoing_mogi_checks(self):
@@ -754,6 +788,15 @@ class SquadQueue(commands.Cog):
                 extra_members.append(ctx.guild.get_member(m))
             for m in extra_members:
                 print(m)
+
+    #@commands.command()
+    async def thread_test(self, ctx):
+        for i in range(100):
+            thread_msg = await ctx.send(f"{i+1}")
+            room_channel = await ctx.channel.create_thread(name=f"Room {i+1}",
+                                                                    message=thread_msg,
+                                                                    auto_archive_duration=60)
+            await asyncio.sleep(2)
 
 
 async def setup(bot):

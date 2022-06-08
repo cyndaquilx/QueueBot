@@ -70,6 +70,9 @@ class Team:
         self.players = players
         self.avg_mmr = sum([p.mmr for p in self.players]) / len(self.players)
 
+    def recalc_avg(self):
+        self.avg_mmr = sum([p.mmr for p in self.players]) / len(self.players)
+
     def is_registered(self):
         for player in self.players:
             if player.confirmed is False:
@@ -92,7 +95,8 @@ class Team:
         for i, player in enumerate(self.players):
             if player == sub_out:
                 self.players[i] = sub_in
-                return
+                self.recalc_avg()
+                return   
 
     def num_confirmed(self):
         count = 0

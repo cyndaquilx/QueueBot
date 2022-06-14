@@ -720,8 +720,16 @@ class SquadQueue(commands.Cog):
         
         event_start_time = actual_time.astimezone() - self.QUEUE_OPEN_TIME
         event_end_time = event_start_time + self.JOINING_TIME
+        if event_end_time < discord.utils.utcnow():
+            bad_end_time = discord.utils.format_dt(event_end_time, style="F")
+            await interaction.response.send_message("The queue for this event would end in the past! "
+            f"({bad_end_time}) "
+            "Make sure your timezone is correct (with daylight savings taken into account, "
+            "ex. EDT instead of EST if it's summer)")
+            return
         if event_start_time < discord.utils.utcnow():
-            event_start_time = discord.utils.utcnow()
+            #have to add 1 minute here, because utcnow() will technically be the past when the API request is sent
+            event_start_time = discord.utils.utcnow() + timedelta(minutes=1)
         discord_event = await interaction.guild.create_scheduled_event(name=f"SQ #{sq_id}: {size.name} gathering players",
                                                        start_time = event_start_time,
                                                        end_time = event_end_time,

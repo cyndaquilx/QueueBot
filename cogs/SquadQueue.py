@@ -715,17 +715,20 @@ class SquadQueue(commands.Cog):
             return
         actual_time = self.getTime(schedule_time, timezone)
         if actual_time < datetime.now():
-            await interaction.response.send_message("That time is in the past, please schedule a time in the future")
+            bad_time = discord.utils.format_dt(actual_time, style="F")
+            await interaction.response.send_message(f"That time is in the past! ({bad_time})"
+            "Make sure your timezone is correct (with daylight savings taken into account, "
+            "ex. EDT instead of EST if it's summer), and that you've entered the date if it's not today")
             return
         
         event_start_time = actual_time.astimezone() - self.QUEUE_OPEN_TIME
         event_end_time = event_start_time + self.JOINING_TIME
         if event_end_time < discord.utils.utcnow():
-            bad_end_time = discord.utils.format_dt(event_end_time, style="F")
+            bad_time = discord.utils.format_dt(event_end_time, style="F")
             await interaction.response.send_message("The queue for this event would end in the past! "
-            f"({bad_end_time}) "
+            f"({bad_time}) "
             "Make sure your timezone is correct (with daylight savings taken into account, "
-            "ex. EDT instead of EST if it's summer)")
+            "ex. EDT instead of EST if it's summer), and that you've entered the date if it's not today")
             return
         if event_start_time < discord.utils.utcnow():
             #have to add 1 minute here, because utcnow() will technically be the past when the API request is sent

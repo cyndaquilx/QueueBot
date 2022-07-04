@@ -17,7 +17,9 @@ class SquadQueue(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         
+        # keys are discord.Guild objects, values are list of Mogi instances
         self.scheduled_events = {}
+        # keys are discord.TextChannel objects, values are instances of Mogi
         self.ongoing_events = {}
         
         self._scheduler_task = self.sqscheduler.start()
@@ -38,12 +40,18 @@ class SquadQueue(commands.Cog):
             self.timezones = json.load(cjson)
 
     async def lockdown(self, channel:discord.TextChannel):
+        everyone_perms = channel.permissions_for(channel.guild.default_role)
+        if not everyone_perms.send_messages:
+            return
         overwrite = channel.overwrites_for(channel.guild.default_role)
         overwrite.send_messages = False
         await channel.set_permissions(channel.guild.default_role, overwrite=overwrite)
         await channel.send("Locked down " + channel.mention)
 
     async def unlockdown(self, channel:discord.TextChannel):
+        everyone_perms = channel.permissions_for(channel.guild.default_role)
+        if everyone_perms.send_messages:
+            return
         overwrite = channel.overwrites_for(channel.guild.default_role)
         overwrite.send_messages = None
         await channel.set_permissions(channel.guild.default_role, overwrite=overwrite)
@@ -376,6 +384,7 @@ class SquadQueue(commands.Cog):
             return
         mogi.gathering = False
         mogi.is_automated = False
+        await self.lockdown(ctx.channel)
         await ctx.send("Mogi is now closed; players can no longer join or drop from the event")
 
     async def endMogi(self, mogi_channel):
@@ -428,6 +437,7 @@ class SquadQueue(commands.Cog):
             return
         mogi.gathering = True
         mogi.is_automated = False
+        await self.unlockdown(ctx.channel)
         await ctx.send("Mogi is now open; players can join and drop from the event")
 
     #command to add staff to room thread channels; users can't add new users to private threads,
@@ -506,16 +516,16 @@ class SquadQueue(commands.Cog):
             return
         if mogi.making_rooms_run and started_automatically:
             return
-        if started_automatically:
-            await self.lockdown(mogi.mogi_channel)
+        num_rooms = int(mogi.count_registered() / (12/mogi.size))
+        if num_rooms == 0:
+            await mogi.mogi_channel.send(f"Not enough players to fill a room! Try this command with at least {int(12/mogi.size)} teams")
+            return
+        await self.lockdown(mogi.mogi_channel)
         mogi.making_rooms_run = True
         if mogi.gathering:
             mogi.gathering = False
             await mogi.mogi_channel.send("Mogi is now closed; players can no longer join or drop from the event")
-        num_rooms = int(mogi.count_registered() / (12/mogi.size))
-        if num_rooms == 0:
-            await mogi.mogi_channel.send("Not enough players to fill a room! Try this command with at least %d teams" % int(12/self.size))
-            return
+        
         pen_time = open_time + 5
         start_time = open_time + 10
         while pen_time >= 60:
@@ -610,9 +620,9 @@ class SquadQueue(commands.Cog):
         
     async def scheduler_mogi_start(self):
         cur_time = datetime.now()
-        for channel in self.scheduled_events.values():
+        for guild in self.scheduled_events.values():
             to_remove = [] #Keep a list of indexes to remove - can't remove while iterating
-            for i, mogi in enumerate(channel):
+            for i, mogi in enumerate(guild):
                 if(mogi.start_time - self.QUEUE_OPEN_TIME) < cur_time:
                     if mogi.mogi_channel in self.ongoing_events.keys() and self.ongoing_events[mogi.mogi_channel].gathering:
                         to_remove.append(i)
@@ -628,7 +638,7 @@ class SquadQueue(commands.Cog):
                         await self.unlockdown(mogi.mogi_channel)
                         await mogi.mogi_channel.send(f"A {mogi.size}v{mogi.size} mogi has been started - @here Type `!c`, `!d`, or `!list`")
             for ind in reversed(to_remove):
-                del channel[ind]
+                del guild[ind]
 
     async def check_num_teams(self, mogi):
         if not mogi.gathering or not mogi.is_automated:
@@ -695,6 +705,15 @@ class SquadQueue(commands.Cog):
         corrected_time = actual_time - time_adjustment - timezone_adjustment
         return corrected_time
 
+    @app_commands.command(name="get_time_discord")
+    #@app_commands.guilds(445404006177570829)
+    async def get_time_command(self, interaction:discord.Interaction,
+                    schedule_time:str, timezone:str):
+        """Get the Discord timestamp string for a time"""
+        actual_time = self.getTime(schedule_time, timezone)
+        event_str = discord.utils.format_dt(actual_time, style="F")
+        await interaction.response.send_message(f"`{event_str}`", ephemeral=True)
+
     @app_commands.command(name="schedule_event")
     @app_commands.choices(
         size=[
@@ -704,7 +723,7 @@ class SquadQueue(commands.Cog):
             Choice(name="4v4", value=4),
             Choice(name="6v6", value=6)
             ])
-    @app_commands.guilds(445404006177570829)
+    #@app_commands.guilds(445404006177570829)
     async def schedule_event(self, interaction:discord.Interaction,
                        size:Choice[int], sq_id: int,
                              channel:discord.TextChannel,
@@ -714,6 +733,10 @@ class SquadQueue(commands.Cog):
             await interaction.response.send_message("You do not have permissions to use this command",ephemeral=True)
             return
         actual_time = self.getTime(schedule_time, timezone)
+        if actual_time is None:
+            await interaction.response.send_message(f"I couldn't understand your time, so I couldn't schedule the event.",
+            ephemeral=True)
+            return
         if actual_time < datetime.now():
             bad_time = discord.utils.format_dt(actual_time, style="F")
             await interaction.response.send_message(f"That time is in the past! ({bad_time})"
@@ -739,9 +762,9 @@ class SquadQueue(commands.Cog):
                                                        entity_type = discord.EntityType.external,
                                                        location=channel.mention)
         mogi = Mogi(sq_id, size.value, channel, is_automated=True, start_time=actual_time, discord_event=discord_event)
-        if channel not in self.scheduled_events.keys():
-            self.scheduled_events[channel] = []
-        self.scheduled_events[channel].append(mogi)
+        if interaction.guild not in self.scheduled_events.keys():
+            self.scheduled_events[interaction.guild] = []
+        self.scheduled_events[interaction.guild].append(mogi)
         event_str = self.get_event_str(mogi)
         await interaction.response.send_message(f"Scheduled the following event:\n{event_str}")
 
@@ -750,19 +773,19 @@ class SquadQueue(commands.Cog):
         return(f"`#{mogi.sq_id}` **{mogi.size}v{mogi.size}:** {mogi_time}")
 
     @app_commands.command(name="remove_event")
-    @app_commands.guilds(445404006177570829)
+    #@app_commands.guilds(445404006177570829)
     async def remove_event(self, interaction:discord.Interaction, event_id:int, channel:discord.TextChannel):
         """Removes an event from the schedule"""
         if not await self.has_roles(interaction.user, interaction.guild_id, self.bot.config):
             await interaction.response.send_message("You do not have permissions to use this command",ephemeral=True)
             return
-        if channel not in self.scheduled_events.keys():
+        if interaction.guild not in self.scheduled_events.keys():
             await interaction.response.send_message("This event number isn't in the schedule. Do `!view_schedule` to see the scheduled events.",
                                                     ephemeral=True)
             return
-        for event in self.scheduled_events[channel]:
-            if event.sq_id == event_id:
-                self.scheduled_events[channel].remove(event)
+        for event in self.scheduled_events[interaction.guild]:
+            if event.sq_id == event_id and event.mogi_channel == channel:
+                self.scheduled_events[interaction.guild].remove(event)
                 #await event.discord_event.cancel()
                 await event.discord_event.edit(status=discord.EventStatus.cancelled, end_time=event.discord_event.end_time, location=event.discord_event.location)
                 await interaction.response.send_message(f"Removed the following event:\n{self.get_event_str(event)}")
@@ -771,7 +794,22 @@ class SquadQueue(commands.Cog):
 
     @commands.command()
     @commands.guild_only()
-    async def view_schedule(self, ctx):
+    async def view_schedule(self, ctx, copy_paste=""):
+        """View the SQ schedule. Use !view_schedule cp to get a copy/pastable version"""
+        if ctx.guild not in self.scheduled_events.keys():
+            await ctx.send("There are no SQ events scheduled in this server yet. Use /schedule_event to schedule one.")
+        server_schedule = self.scheduled_events[ctx.guild]
+        if len(server_schedule) == 0:
+            await ctx.send("There are no SQ events scheduled in this server yet. Use /schedule_event to schedule one.")
+            return
+        msg = ""
+        if copy_paste == "cp":
+            msg += "```"
+        for event in server_schedule:
+            msg += f"{self.get_event_str(event)}\n"
+        if copy_paste == "cp":
+            msg += "```"
+        await ctx.send(msg)
         return
 
     @commands.command(aliases=['pt'])
@@ -782,10 +820,14 @@ class SquadQueue(commands.Cog):
         except (ValueError, OverflowError):
             await ctx.send("I couldn't figure out the date and time for your event. Try making it a bit more clear for me.")
 
-        
+    @commands.command(name="sync")
+    @commands.is_owner()
+    async def sync(self, ctx):
+        await self.bot.tree.sync()
+        await ctx.send("sync'd")
+
     @commands.command(name="sync_server")
     @commands.is_owner()
-    @commands.dm_only()
     async def sync_server(self, ctx):
         await self.bot.tree.sync(guild=discord.Object(id=445404006177570829))
         await ctx.send("sync'd")

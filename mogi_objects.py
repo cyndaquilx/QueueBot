@@ -121,10 +121,10 @@ class Team:
     def __gt__(self, other):
         return other.__lt__(self)
 
-    def __eq__(self, other):
-        if self.avg_mmr == other.avg_mmr:
-            return True
-        return False
+    # def __eq__(self, other):
+    #     if self.avg_mmr == other.avg_mmr:
+    #         return True
+    #     return False
 
     def __str__(self):
         return ", ".join([p.lounge_name for p in self.players])

@@ -460,7 +460,7 @@ class SquadQueue(commands.Cog):
         mentions = " ".join([ctx.guild.get_role(role).mention for role in lounge_staff_roles])
         await ctx.send(mentions)
 
-    @commands.command()
+    #@commands.command()
     async def fc(self, ctx, *, name=None):
         """Displays the FC for the given player. Only works in thread channels for SQ rooms."""
         is_room_thread = False

@@ -725,9 +725,8 @@ class SquadQueue(commands.Cog):
             ])
     #@app_commands.guilds(445404006177570829)
     async def schedule_event(self, interaction:discord.Interaction,
-                       size:Choice[int], sq_id: int,
-                             channel:discord.TextChannel,
-                       schedule_time:str, timezone:str):
+                       sq_id: int, size:Choice[int], 
+                       schedule_time:str, timezone:str, channel:discord.TextChannel):
         """Schedules an SQ event in the given channel at the given time."""
         if not await self.has_roles(interaction.user, interaction.guild_id, self.bot.config):
             await interaction.response.send_message("You do not have permissions to use this command",ephemeral=True)

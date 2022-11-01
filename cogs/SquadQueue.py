@@ -73,19 +73,22 @@ class SquadQueue(commands.Cog):
     #into as few messsages as possible, then sends them
     @tasks.loop(seconds=2)
     async def send_queued_messages(self):
-        for channel in self.msg_queue.keys():
-            channel_queue = self.msg_queue[channel]
-            sentmsgs = []
-            msg = ""
-            for i in range(len(channel_queue)-1, -1, -1):
-                msg = channel_queue.pop(i) + "\n" + msg
-                if len(msg) > 1500:
+        try:
+            for channel in self.msg_queue.keys():
+                channel_queue = self.msg_queue[channel]
+                sentmsgs = []
+                msg = ""
+                for i in range(len(channel_queue)-1, -1, -1):
+                    msg = channel_queue.pop(i) + "\n" + msg
+                    if len(msg) > 1500:
+                        sentmsgs.append(msg)
+                        msg = ""
+                if len(msg) > 0:
                     sentmsgs.append(msg)
-                    msg = ""
-            if len(msg) > 0:
-                sentmsgs.append(msg)
-            for i in range(len(sentmsgs)-1, -1, -1):
-                await channel.send(sentmsgs[i])
+                for i in range(len(sentmsgs)-1, -1, -1):
+                    await channel.send(sentmsgs[i])
+        except Exception as e:
+            print(e)
 
     
 

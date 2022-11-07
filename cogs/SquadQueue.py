@@ -40,18 +40,18 @@ class SquadQueue(commands.Cog):
             self.timezones = json.load(cjson)
 
     async def lockdown(self, channel:discord.TextChannel):
-        everyone_perms = channel.permissions_for(channel.guild.default_role)
-        if not everyone_perms.send_messages:
-            return
+        # everyone_perms = channel.permissions_for(channel.guild.default_role)
+        # if not everyone_perms.send_messages:
+        #     return
         overwrite = channel.overwrites_for(channel.guild.default_role)
         overwrite.send_messages = False
         await channel.set_permissions(channel.guild.default_role, overwrite=overwrite)
         await channel.send("Locked down " + channel.mention)
 
     async def unlockdown(self, channel:discord.TextChannel):
-        everyone_perms = channel.permissions_for(channel.guild.default_role)
-        if everyone_perms.send_messages:
-            return
+        # everyone_perms = channel.permissions_for(channel.guild.default_role)
+        # if everyone_perms.send_messages:
+        #     return
         overwrite = channel.overwrites_for(channel.guild.default_role)
         overwrite.send_messages = None
         await channel.set_permissions(channel.guild.default_role, overwrite=overwrite)

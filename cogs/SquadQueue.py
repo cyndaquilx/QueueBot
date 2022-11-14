@@ -755,6 +755,7 @@ class SquadQueue(commands.Cog):
             "Make sure your timezone is correct (with daylight savings taken into account, "
             "ex. EDT instead of EST if it's summer), and that you've entered the date if it's not today")
             return
+        await interaction.response.defer(thinking=True)
         if event_start_time < discord.utils.utcnow():
             #have to add 1 minute here, because utcnow() will technically be the past when the API request is sent
             event_start_time = discord.utils.utcnow() + timedelta(minutes=1)
@@ -768,7 +769,8 @@ class SquadQueue(commands.Cog):
             self.scheduled_events[interaction.guild] = []
         self.scheduled_events[interaction.guild].append(mogi)
         event_str = self.get_event_str(mogi)
-        await interaction.response.send_message(f"Scheduled the following event:\n{event_str}")
+        #await interaction.response.send_message(f"Scheduled the following event:\n{event_str}")
+        await interaction.followup.send(f"Scheduled the following event:\n{event_str}")
 
     def get_event_str(self, mogi):
         mogi_time = discord.utils.format_dt(mogi.start_time, style="F")

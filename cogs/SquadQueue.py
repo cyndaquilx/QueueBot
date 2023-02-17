@@ -4,7 +4,6 @@ from discord import app_commands
 from discord.app_commands import Choice
 from dateutil.parser import parse
 from datetime import datetime, timedelta
-import collections
 import time
 import json
 from mmr import get_mmr, mk8dx_150cc_fc

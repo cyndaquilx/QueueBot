@@ -511,7 +511,107 @@ class SquadQueue(commands.Cog):
         if not is_room_thread:
             return
         await ctx.send("Stats bot cannot read messages in threads, so this command will not work. Please use `!scoreboard` to make the table.")
+
+    # make thread channels while the event is gathering instead of at the end,
+    # since discord only allows 50 thread channels to be created per 5 minutes.
+    async def check_room_channels(self, mogi):
+        num_teams = mogi.count_registered()
+        num_rooms = int(num_teams / (12/mogi.size))
+        num_created_rooms = len(mogi.rooms)
+        if num_created_rooms >= num_rooms:
+            return
+        for i in range(num_created_rooms, num_rooms):
+            room_name = f"SQ{mogi.sq_id} Room {i+1}"
+            try: 
+                room_channel = await mogi.mogi_channel.create_thread(name=room_name,
+                                                                    auto_archive_duration=60,
+                                                                    invitable=False)
+                await room_channel.send(room_name)
+            except Exception as e:
+                print(e)
+                err_msg = f"\nAn error has occurred while creating a room channel:\n{e}"
+                await mogi.mogi_channel.send(err_msg)
+                return
+            mogi.rooms.append(Room(None, i+1, room_channel))
+    
+    # add teams to the room threads that we have already created
+    async def add_teams_to_rooms(self, mogi, open_time:int, started_automatically=False):
+        if open_time >= 60 or open_time < 0:
+            await mogi.mogi_channel.send("Please specify a valid time (in minutes) for rooms to open (00-59)")
+            return
+        if mogi.making_rooms_run and started_automatically:
+            return
+        num_rooms = int(mogi.count_registered() / (12/mogi.size))
+        if num_rooms == 0:
+            await mogi.mogi_channel.send(f"Not enough players to fill a room! Try this command with at least {int(12/mogi.size)} teams")
+            return
+        await self.lockdown(mogi.mogi_channel)
+        mogi.making_rooms_run = True
+        if mogi.gathering:
+            mogi.gathering = False
+            await mogi.mogi_channel.send("Mogi is now closed; players can no longer join or drop from the event")
         
+        pen_time = open_time + 5
+        start_time = open_time + 10
+        while pen_time >= 60:
+            pen_time -= 60
+        while start_time >= 60:
+            start_time -= 60
+        teams_per_room = int(12/mogi.size)
+        num_teams = int(num_rooms * teams_per_room)
+        final_list = mogi.confirmed_list()[0:num_teams]
+        sorted_list = sorted(final_list, reverse=True)
+
+        extra_members = []
+        if str(mogi.mogi_channel.guild.id) in self.bot.config["members_for_channels"].keys():
+            extra_members_ids = self.bot.config["members_for_channels"][str(mogi.mogi_channel.guild.id)]
+            for m in extra_members_ids:
+                extra_members.append(mogi.mogi_channel.guild.get_member(m))
+
+        rooms = mogi.rooms
+        for i in range(num_rooms):
+            if i > 0 and i % 50 == 0:
+                await mogi.mogi_channel.send("Additional rooms will be created in 3-5 minutes.")
+            room_name = f"SQ{mogi.sq_id} Room {i+1}"
+            msg = f"`Room {i+1}`\n"
+            scoreboard = f"Table: `!scoreboard`"
+            mentions = ""
+            start_index = int(i*teams_per_room)
+            for j in range(teams_per_room):
+                msg += f"`{j+1}.` "
+                team = sorted_list[start_index+j]
+                msg += ", ".join([p.lounge_name for p in team.players])
+                msg += f" ({int(team.avg_mmr)} MMR)\n"
+                mentions += " ".join([p.member.mention for p in team.players])
+                mentions += " "
+            room_msg = msg
+            mentions += " ".join([m.mention for m in extra_members if m is not None])
+            room_msg += f"{scoreboard}\n"
+            room_msg += ("\nDecide a host amongst yourselves; room open at :%02d, penalty at :%02d, start by :%02d. Good luck!\n\n"
+                        % (open_time, pen_time, start_time))
+            room_msg += "\nIf you need staff's assistance, use the `!staff` command in this channel.\n"
+            room_msg += mentions
+            try:
+                curr_room = rooms[i]
+                room_channel = curr_room.thread
+                curr_room.teams = sorted_list[start_index:start_index+teams_per_room]
+                await room_channel.send(room_msg)
+            except Exception as e:
+                print(e)
+                err_msg = f"\nAn error has occurred while creating the room channel; please contact your opponents in DM or another channel\n"
+                err_msg += mentions
+                msg += err_msg
+                room_channel = None
+            await mogi.mogi_channel.send(msg)
+        if num_teams < mogi.count_registered():
+            missed_teams = mogi.confirmed_list()[num_teams:mogi.count_registered()]
+            msg = "`Late teams:`\n"
+            for i in range(len(missed_teams)):
+                msg += f"`{i+1}.` "
+                msg += ", ".join([p.lounge_name for p in missed_teams[i].players])
+                msg += f" ({int(missed_teams[i].avg_mmr)} MMR)\n"
+            await mogi.mogi_channel.send(msg)
+
     async def makeRoomsLogic(self, mogi, open_time:int, started_automatically=False):
         if open_time >= 60 or open_time < 0:
             await mogi.mogi_channel.send("Please specify a valid time (in minutes) for rooms to open (00-59)")

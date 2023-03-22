@@ -149,6 +149,7 @@ class SquadQueue(commands.Cog):
                     msg += f"`{i+1}.` {pl.lounge_name} ({pl.mmr} MMR)\n"
             await self.queue_or_send(ctx, msg)
             #await self.ongoing_mogi_checks()
+            await self.check_room_channels(mogi)
             await self.check_num_teams(mogi)
             return
 
@@ -197,6 +198,8 @@ class SquadQueue(commands.Cog):
             await self.queue_or_send(ctx, msg)
         else:
             await self.queue_or_send(ctx, f"{players[0].lounge_name} has joined the mogi `[{mogi.count_registered()} players]`")
+            await self.check_room_channels(mogi)
+            await self.check_num_teams(mogi)
 
     @commands.command(aliases=['d'])
     @commands.max_concurrency(number=1,wait=True)
@@ -572,7 +575,7 @@ class SquadQueue(commands.Cog):
         for i in range(num_rooms):
             if i > 0 and i % 50 == 0:
                 await mogi.mogi_channel.send("Additional rooms will be created in 3-5 minutes.")
-            room_name = f"SQ{mogi.sq_id} Room {i+1}"
+            #room_name = f"SQ{mogi.sq_id} Room {i+1}"
             msg = f"`Room {i+1}`\n"
             scoreboard = f"Table: `!scoreboard`"
             mentions = ""
@@ -753,7 +756,6 @@ class SquadQueue(commands.Cog):
                 await self.lockdown(mogi.mogi_channel)
                 await mogi.mogi_channel.send("A sufficient amount of teams has been reached, so the mogi has been closed to extra teams. Rooms will be made within the next minute.")
 
-
     async def ongoing_mogi_checks(self):
         for mogi in self.ongoing_events.values():
             #If it's not automated, not started, we've already started making the rooms, don't run this
@@ -761,13 +763,15 @@ class SquadQueue(commands.Cog):
                 return
             cur_time = datetime.now()
             if (mogi.start_time - self.QUEUE_OPEN_TIME + self.JOINING_TIME + self.EXTENSION_TIME) <= cur_time:
-                await self.makeRoomsLogic(mogi, (mogi.start_time.minute)%60, True)
+                #await self.makeRoomsLogic(mogi, (mogi.start_time.minute)%60, True)
+                await self.add_teams_to_rooms(mogi, (mogi.start_time.minute)%60, True)
                 return
             if mogi.start_time - self.QUEUE_OPEN_TIME + self.JOINING_TIME <= cur_time:
                 #check if there are an even amount of teams since we are past the queue time
                 numLeftoverTeams = mogi.count_registered() % int((12/mogi.size))
                 if numLeftoverTeams == 0:
-                    await self.makeRoomsLogic(mogi, (mogi.start_time.minute)%60, True)
+                    #await self.makeRoomsLogic(mogi, (mogi.start_time.minute)%60, True)
+                    await self.add_teams_to_rooms(mogi, (mogi.start_time.minute)%60, True)
                     return
                 else:
                     if int(cur_time.second / 20) == 0:

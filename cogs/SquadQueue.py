@@ -711,7 +711,7 @@ class SquadQueue(commands.Cog):
 
     @commands.command()
     @commands.guild_only()
-    @commands.max_concurrency(number=1, wait=True)
+    @commands.max_concurrency(number=1, wait=False)
     async def makeRooms(self, ctx, openTime:int):
         """Makes thread channels for SQ rooms."""
         if not await self.has_roles(ctx.author, ctx.guild.id, ctx.bot.config):

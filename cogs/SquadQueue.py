@@ -573,8 +573,8 @@ class SquadQueue(commands.Cog):
 
         rooms = mogi.rooms
         for i in range(num_rooms):
-            if i > 0 and i % 50 == 0:
-                await mogi.mogi_channel.send("Additional rooms will be created in 3-5 minutes.")
+            # if i > 0 and i % 50 == 0:
+            #     await mogi.mogi_channel.send("Additional rooms will be created in 3-5 minutes.")
             #room_name = f"SQ{mogi.sq_id} Room {i+1}"
             msg = f"`Room {i+1}`\n"
             scoreboard = f"Table: `!scoreboard`"

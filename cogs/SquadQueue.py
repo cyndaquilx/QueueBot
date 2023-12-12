@@ -877,7 +877,8 @@ class SquadQueue(commands.Cog):
 
     def get_event_str(self, mogi):
         mogi_time = discord.utils.format_dt(mogi.start_time, style="F")
-        return(f"`#{mogi.sq_id}` **{mogi.size}v{mogi.size}:** {mogi_time}")
+        mogi_time_relative = discord.utils.format_dt(mogi.start_time, style="R")
+        return(f"`#{mogi.sq_id}` **{mogi.size}v{mogi.size}:** {mogi_time} - {mogi_time_relative}")
 
     @app_commands.command(name="remove_event")
     #@app_commands.guilds(445404006177570829)

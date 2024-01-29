@@ -23,8 +23,10 @@ class SquadQueue(commands.Cog):
         
         self._scheduler_task = self.sqscheduler.start()
         self._msgqueue_task = self.send_queued_messages.start()
+        self._list_task = self.list_task.start()
 
         self.msg_queue = {}
+        self.list_messages = {}
 
         #number of minutes before scheduled time that queue should open
         self.QUEUE_OPEN_TIME = timedelta(minutes=bot.config["QUEUE_OPEN_TIME"])
@@ -37,6 +39,9 @@ class SquadQueue(commands.Cog):
 
         with open('./timezones.json', 'r') as cjson:
             self.timezones = json.load(cjson)
+
+        with open('./server_config.json', 'r') as cjson:
+            self.server_config = json.load(cjson)
 
     async def lockdown(self, channel:discord.TextChannel):
         # everyone_perms = channel.permissions_for(channel.guild.default_role)
@@ -310,8 +315,33 @@ class SquadQueue(commands.Cog):
                 msg += "`✘ Unconfirmed`\n"
         await self.queue_or_send(ctx, msg, delay=30)
 
+    def get_list_messages(self, mogi):
+        mogi_list = mogi.confirmed_list()
+        sorted_mogi_list = sorted(mogi_list, reverse=True)
+        msg = f"`SQ #{mogi.sq_id} Mogi List`\n"
+        for i in range(len(sorted_mogi_list)):
+            msg += f"`{i+1}.` "
+            msg += ", ".join([p.lounge_name for p in sorted_mogi_list[i].players])
+            msg += f" ({sorted_mogi_list[i].avg_mmr:.1f} MMR)\n"
+        if(len(sorted_mogi_list) % (12/mogi.size) != 0):
+            num_next = int(len(sorted_mogi_list) % (12/mogi.size))
+            teams_per_room = int(12/mogi.size)
+            num_rooms = int(len(sorted_mogi_list) / (12/mogi.size))+1
+            msg += f"`[{num_next}/{teams_per_room}] teams for {num_rooms} rooms`"
+        lines = msg.split("\n")
+        messages = []
+        curr_msg = ""
+        for line in lines:
+            if len(curr_msg + line + "\n") > 2000:
+                messages.append(curr_msg)
+                curr_msg = ""
+            curr_msg += f"{line}\n"
+        if len(curr_msg) > 0:
+            messages.append(curr_msg)
+        return messages
+
     @commands.command(aliases=['l'])
-    @commands.cooldown(1, 120)
+    @commands.cooldown(1, 60)
     @commands.guild_only()
     async def list(self, ctx):
         """Display the list of confirmed squads for a mogi; sends 15 at a time to avoid
@@ -321,26 +351,57 @@ class SquadQueue(commands.Cog):
             return
         if not await self.is_started(ctx, mogi):
             return
-        mogi_list = mogi.confirmed_list()
-        if len(mogi_list) == 0:
-            await ctx.send(f"There are no squads in the mogi - confirm {mogi.size} players to join")
+        mogi_guild = mogi.mogi_channel.guild
+        list_channel_id = self.get_server_config(mogi_guild, "list_channel")
+        list_channel = self.bot.get_channel(list_channel_id)
+        if list_channel:
+            await self.queue_or_send(ctx, f"{ctx.author.mention} {list_channel.jump_url}")
             return
-        sorted_mogi_list = sorted(mogi_list, reverse=True)
-        msg = f"`SQ #{mogi.sq_id} Mogi List`\n"
-        for i in range(len(sorted_mogi_list)):
-            if len(msg) > 1500:
-                await ctx.send(msg)
-                msg = ""
-            msg += f"`{i+1}.` "
-            msg += ", ".join([p.lounge_name for p in sorted_mogi_list[i].players])
-            msg += f" ({sorted_mogi_list[i].avg_mmr:.1f} MMR)\n"
-        if(len(sorted_mogi_list) % (12/mogi.size) != 0):
-            num_next = int(len(sorted_mogi_list) % (12/mogi.size))
-            teams_per_room = int(12/mogi.size)
-            num_rooms = int(len(sorted_mogi_list) / (12/mogi.size))+1
-            msg += f"`[{num_next}/{teams_per_room}] teams for {num_rooms} rooms`"
-        await ctx.send(msg)
-        
+        msgs = self.get_list_messages(mogi)
+        for msg in msgs:
+            await ctx.send(msg)
+    
+    @tasks.loop(seconds=60)
+    async def list_task(self):
+        if len(self.ongoing_events) == 0:
+            return
+        for mogi in self.ongoing_events.values():
+            mogi_guild = mogi.mogi_channel.guild
+            list_channel_id = self.get_server_config(mogi_guild, "list_channel")
+            list_channel = self.bot.get_channel(list_channel_id)
+            if not list_channel:
+                continue
+            if not mogi.gathering:
+                await self.delete_list_messages(list_channel, 0)
+                continue
+
+            new_messages = self.get_list_messages(mogi)
+            await self.delete_list_messages(list_channel, len(new_messages))
+
+            list_messages = self.list_messages[list_channel]
+            try:
+                for i, message in enumerate(new_messages):
+                    if i < len(list_messages):
+                        old_message = list_messages[i]
+                        await old_message.edit(content=message)
+                    else:
+                        new_message = await list_channel.send(message)
+                        list_messages.append(new_message)
+            except Exception as e:
+               print(e, flush=True)
+               await self.delete_list_messages(list_channel, 0)
+            
+    async def delete_list_messages(self, channel: discord.TextChannel, new_list_size: int):
+        try:
+            messages_to_delete = []
+            if channel not in self.list_messages.keys():
+                self.list_messages[channel] = []
+            list_messages = self.list_messages[channel]
+            while len(list_messages) > new_list_size:
+                messages_to_delete.append(list_messages.pop())
+            await channel.delete_messages(messages_to_delete)
+        except Exception as e:
+            print(e, flush=True)
 
     async def start_input_validation(self, ctx, size:int, sq_id:int):
         valid_sizes = [1, 2, 3, 4, 6]
@@ -394,19 +455,19 @@ class SquadQueue(commands.Cog):
 
     async def endMogi(self, mogi_channel):
         mogi = self.ongoing_events[mogi_channel]
-        for room in mogi.rooms:
-            if room.thread is None:
-                return
-            if not room.thread.archived:
-                try:
-                    await room.thread.edit(archived=True, locked=True)
-                except Exception as e:
-                   pass
-            elif not room.thread.locked:
-                try:
-                    await room.thread.edit(locked=True)
-                except Exception as e:
-                    pass
+        # for room in mogi.rooms:
+        #     if room.thread is None:
+        #         return
+        #     if not room.thread.archived:
+        #         try:
+        #             await room.thread.edit(archived=True, locked=True)
+        #         except Exception as e:
+        #            pass
+        #     elif not room.thread.locked:
+        #         try:
+        #             await room.thread.edit(locked=True)
+        #         except Exception as e:
+        #             pass
         del self.ongoing_events[mogi_channel]
 
     @commands.command()
@@ -554,7 +615,7 @@ class SquadQueue(commands.Cog):
             mogi.gathering = False
             await mogi.mogi_channel.send("Mogi is now closed; players can no longer join or drop from the event")
         
-        pen_time = open_time + 5
+        pen_time = open_time + 6
         start_time = open_time + 10
         while pen_time >= 60:
             pen_time -= 60
@@ -573,9 +634,7 @@ class SquadQueue(commands.Cog):
 
         rooms = mogi.rooms
         for i in range(num_rooms):
-            # if i > 0 and i % 50 == 0:
-            #     await mogi.mogi_channel.send("Additional rooms will be created in 3-5 minutes.")
-            #room_name = f"SQ{mogi.sq_id} Room {i+1}"
+            room_name = f"SQ{mogi.sq_id} Room {i+1}"
             msg = f"`Room {i+1}`\n"
             scoreboard = f"Table: `!scoreboard`"
             mentions = ""
@@ -595,6 +654,11 @@ class SquadQueue(commands.Cog):
             room_msg += "\nIf you need staff's assistance, use the `!staff` command in this channel.\n"
             room_msg += mentions
             try:
+                if i >= len(rooms):
+                    room_channel = await mogi.mogi_channel.create_thread(name=room_name,
+                                                                    auto_archive_duration=60,
+                                                                    invitable=False)
+                    rooms.append(Room(None, i+1, room_channel))
                 curr_room = rooms[i]
                 room_channel = curr_room.thread
                 curr_room.teams = sorted_list[start_index:start_index+teams_per_room]
@@ -614,100 +678,17 @@ class SquadQueue(commands.Cog):
                 msg += ", ".join([p.lounge_name for p in missed_teams[i].players])
                 msg += f" ({int(missed_teams[i].avg_mmr)} MMR)\n"
             await mogi.mogi_channel.send(msg)
-
-    async def makeRoomsLogic(self, mogi, open_time:int, started_automatically=False):
-        if open_time >= 60 or open_time < 0:
-            await mogi.mogi_channel.send("Please specify a valid time (in minutes) for rooms to open (00-59)")
+        mogi_guild = mogi.mogi_channel.guild
+        list_channel_id = self.get_server_config(mogi_guild, "list_channel")
+        list_channel = self.bot.get_channel(list_channel_id)
+        if not list_channel:
             return
-        if mogi.making_rooms_run and started_automatically:
-            return
-        num_rooms = int(mogi.count_registered() / (12/mogi.size))
-        if num_rooms == 0:
-            await mogi.mogi_channel.send(f"Not enough players to fill a room! Try this command with at least {int(12/mogi.size)} teams")
-            return
-        await self.lockdown(mogi.mogi_channel)
-        mogi.making_rooms_run = True
-        if mogi.gathering:
-            mogi.gathering = False
-            await mogi.mogi_channel.send("Mogi is now closed; players can no longer join or drop from the event")
-        
-        pen_time = open_time + 5
-        start_time = open_time + 10
-        while pen_time >= 60:
-            pen_time -= 60
-        while start_time >= 60:
-            start_time -= 60
-        teams_per_room = int(12/mogi.size)
-        num_teams = int(num_rooms * teams_per_room)
-        final_list = mogi.confirmed_list()[0:num_teams]
-        sorted_list = sorted(final_list, reverse=True)
-
-        extra_members = []
-        if str(mogi.mogi_channel.guild.id) in self.bot.config["members_for_channels"].keys():
-            extra_members_ids = self.bot.config["members_for_channels"][str(mogi.mogi_channel.guild.id)]
-            for m in extra_members_ids:
-                extra_members.append(mogi.mogi_channel.guild.get_member(m))
-    
-        rooms = []
-        mogi.rooms = rooms
         for i in range(num_rooms):
-            if i > 0 and i % 50 == 0:
-                await mogi.mogi_channel.send("Additional rooms will be created in 3-5 minutes.")
-            room_name = f"SQ{mogi.sq_id} Room {i+1}"
-            msg = f"`Room {i+1}`\n"
-            scoreboard = f"Table: `!scoreboard`"
-            mentions = ""
-            start_index = int(i*teams_per_room)
-            for j in range(teams_per_room):
-                msg += f"`{j+1}.` "
-                team = sorted_list[start_index+j]
-                msg += ", ".join([p.lounge_name for p in team.players])
-                msg += f" ({int(team.avg_mmr)} MMR)\n"
-                mentions += " ".join([p.member.mention for p in team.players])
-                mentions += " "
-                #scoreboard += ",".join([p.lounge_name for p in team.players])
-                #if j+1 < teams_per_room:
-                #    scoreboard += ","
-            room_msg = msg
-            mentions += " ".join([m.mention for m in extra_members if m is not None])
-            room_msg += f"{scoreboard}\n"
-            room_msg += ("\nDecide a host amongst yourselves; room open at :%02d, penalty at :%02d, start by :%02d. Good luck!\n\n"
-                        % (open_time, pen_time, start_time))
-            room_msg += "\nIf you need staff's assistance, use the `!staff` command in this channel.\n"
-            room_msg += mentions
-            thread_type = 1
-            try: 
-                #can only make private threads in servers with boost level 2 LOL!
-                if mogi.mogi_channel.guild.premium_tier >= 2:
-                    room_channel = await mogi.mogi_channel.create_thread(name=room_name,
-                                                                         auto_archive_duration=60,
-                                                                         invitable=False)
-                else:
-                    thread_msg = await mogi.mogi_channel.send(msg)
-                    room_channel = await mogi.mogi_channel.create_thread(name=room_name,
-                                                                         message=thread_msg,
-                                                                         auto_archive_duration=60)
-                    thread_type = 0
-                await room_channel.send(room_msg)
-            except Exception as e:
-                print(e)
-                err_msg = f"\nAn error has occurred while creating the room channel; please contact your opponents in DM or another channel\n"
-                err_msg += mentions
-                msg += err_msg
-                room_channel = None
-            rooms.append(Room(sorted_list[start_index:start_index+teams_per_room],
-                              i+1, room_channel))
-            if thread_type == 1:
-                await mogi.mogi_channel.send(msg)
-        mogi.rooms = rooms
-        if num_teams < mogi.count_registered():
-            missed_teams = mogi.confirmed_list()[num_teams:mogi.count_registered()]
-            msg = "`Late teams:`\n"
-            for i in range(len(missed_teams)):
-                msg += f"`{i+1}.` "
-                msg += ", ".join([p.lounge_name for p in missed_teams[i].players])
-                msg += f" ({int(missed_teams[i].avg_mmr)} MMR)\n"
-            await mogi.mogi_channel.send(msg)
+            room = rooms[i]
+            msg = f"`SQ #{mogi.sq_id} Room {i+1} -` {room.thread.jump_url}\n"
+            for i, team in enumerate(room.teams):
+                msg += f"`{i+1}.` {', '.join([p.lounge_name for p in team.players])} ({int(team.avg_mmr)} MMR)\n"
+            await list_channel.send(msg)
 
     @commands.command()
     @commands.guild_only()
@@ -721,7 +702,7 @@ class SquadQueue(commands.Cog):
             return
         if (not await self.is_started(ctx, mogi)):
             return
-        await self.makeRoomsLogic(mogi, openTime)
+        await self.add_teams_to_rooms(mogi, openTime)
         
     async def scheduler_mogi_start(self):
         cur_time = datetime.now()
@@ -760,19 +741,17 @@ class SquadQueue(commands.Cog):
         for mogi in self.ongoing_events.values():
             #If it's not automated, not started, we've already started making the rooms, don't run this
             if not mogi.is_automated or not mogi.started or mogi.making_rooms_run:
-                return
+                continue
             cur_time = datetime.now()
             if (mogi.start_time - self.QUEUE_OPEN_TIME + self.JOINING_TIME + self.EXTENSION_TIME) <= cur_time:
-                #await self.makeRoomsLogic(mogi, (mogi.start_time.minute)%60, True)
                 await self.add_teams_to_rooms(mogi, (mogi.start_time.minute)%60, True)
-                return
+                continue
             if mogi.start_time - self.QUEUE_OPEN_TIME + self.JOINING_TIME <= cur_time:
                 #check if there are an even amount of teams since we are past the queue time
                 numLeftoverTeams = mogi.count_registered() % int((12/mogi.size))
                 if numLeftoverTeams == 0:
-                    #await self.makeRoomsLogic(mogi, (mogi.start_time.minute)%60, True)
                     await self.add_teams_to_rooms(mogi, (mogi.start_time.minute)%60, True)
-                    return
+                    continue
                 else:
                     if int(cur_time.second / 20) == 0:
                         force_time = mogi.start_time - self.QUEUE_OPEN_TIME + self.JOINING_TIME + self.EXTENSION_TIME
@@ -865,6 +844,7 @@ class SquadQueue(commands.Cog):
         discord_event = await interaction.guild.create_scheduled_event(name=f"SQ #{sq_id}: {size.name} gathering players",
                                                        start_time = event_start_time,
                                                        end_time = event_end_time,
+                                                       privacy_level = discord.PrivacyLevel.guild_only,
                                                        entity_type = discord.EntityType.external,
                                                        location=channel.mention)
         mogi = Mogi(sq_id, size.value, channel, is_automated=True, start_time=actual_time, discord_event=discord_event)
@@ -958,6 +938,60 @@ class SquadQueue(commands.Cog):
                                                                     message=thread_msg,
                                                                     auto_archive_duration=60)
             await asyncio.sleep(2)
+
+    #@commands.command()
+    #@commands.is_owner()
+    async def reload(self, ctx):
+        await ctx.bot.reload_extension("cogs.SquadQueue")
+        await ctx.send("Done")
+
+    def get_server_config(self, guild, field):
+        guild_id = str(guild.id)
+        if guild_id not in self.server_config.keys():
+            return None
+        if field not in self.server_config[guild_id].keys():
+            return None
+        return self.server_config[guild_id][field]
+
+    def set_server_config(self, guild, field, value):
+        guild_id = str(guild.id)
+        if guild_id not in self.server_config.keys():
+            self.server_config[guild_id] = {}
+        self.server_config[guild_id][field] = value
+
+    def save_server_config(self):
+        with open('./server_config.json', 'w', encoding='utf-8') as cjson:
+            json.dump(self.server_config, cjson, ensure_ascii=False, indent=4)
+
+    @app_commands.command(name="set_list_channel")
+    #@app_commands.guilds(305351582017388544)
+    async def set_list_channel(self, interaction: discord.Interaction, channel: discord.TextChannel=None):
+        if channel:
+            self.set_server_config(interaction.guild, "list_channel", channel.id)
+            await interaction.response.send_message(f"Set list channel to {channel.jump_url}")
+        else:
+            self.set_server_config(interaction.guild, "list_channel", None)
+            await interaction.response.send_message("Removed list channel")
+        self.save_server_config()
+        
+    #@commands.command()
+    #@commands.is_owner()
+    async def add100(self, ctx):
+        mogi = self.get_mogi(ctx)
+        if mogi is None:
+            return
+        if (not await self.is_started(ctx, mogi)
+                or not await self.is_gathering(ctx, mogi)):
+            return
+        # checking players' mmr
+        check_players = [ctx.author]
+        players = await get_mmr(ctx.bot.config, check_players)
+        players[0].confirmed = True
+        squad = Team(players)
+        for i in range(100):
+            mogi.teams.append(squad)
+        await ctx.send(f"Added {ctx.author.display_name} 100 times")
+        await self.check_room_channels(mogi)
 
 
 async def setup(bot):

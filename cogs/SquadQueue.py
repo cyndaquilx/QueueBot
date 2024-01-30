@@ -900,6 +900,20 @@ class SquadQueue(commands.Cog):
         await ctx.send(msg)
         return
 
+    @commands.command()
+    @commands.guild_only()
+    async def view_timestamps(self, ctx):
+        if ctx.guild not in self.scheduled_events.keys():
+            await ctx.send("There are no SQ events scheduled in this server yet. Use /schedule_event to schedule one.")
+        server_schedule = self.scheduled_events[ctx.guild]
+        if len(server_schedule) == 0:
+            await ctx.send("There are no SQ events scheduled in this server yet. Use /schedule_event to schedule one.")
+            return
+        msg = ""
+        for event in server_schedule:
+            msg += f"{int(event.start_time.timestamp())}\n"
+        await ctx.send(msg)
+
     @commands.command(aliases=['pt'])
     async def parsetime(self, ctx, *, schedule_time:str):
         try:

@@ -886,7 +886,7 @@ class SquadQueue(commands.Cog):
         """View the SQ schedule. Use !view_schedule cp to get a copy/pastable version"""
         if ctx.guild not in self.scheduled_events.keys():
             await ctx.send("There are no SQ events scheduled in this server yet. Use /schedule_event to schedule one.")
-        server_schedule = self.scheduled_events[ctx.guild]
+        server_schedule = sorted(self.scheduled_events[ctx.guild], key = lambda event: event.sq_id)
         if len(server_schedule) == 0:
             await ctx.send("There are no SQ events scheduled in this server yet. Use /schedule_event to schedule one.")
             return
@@ -902,15 +902,17 @@ class SquadQueue(commands.Cog):
 
     @commands.command()
     @commands.guild_only()
-    async def view_timestamps(self, ctx):
+    async def view_timestamps(self, ctx, no4or6=False):
         if ctx.guild not in self.scheduled_events.keys():
             await ctx.send("There are no SQ events scheduled in this server yet. Use /schedule_event to schedule one.")
-        server_schedule = self.scheduled_events[ctx.guild]
+        server_schedule = sorted(self.scheduled_events[ctx.guild], key = lambda event: event.sq_id)
         if len(server_schedule) == 0:
             await ctx.send("There are no SQ events scheduled in this server yet. Use /schedule_event to schedule one.")
             return
         msg = ""
         for event in server_schedule:
+            if no4or6 and event.size in [4, 6]:
+                continue
             msg += f"{int(event.start_time.timestamp())}\n"
         await ctx.send(msg)
 

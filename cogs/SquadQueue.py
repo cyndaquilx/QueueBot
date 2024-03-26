@@ -151,7 +151,7 @@ class SquadQueue(commands.Cog):
             else:
                 msg += f"`Squad successfully added to mogi list [{mogi.count_registered()} teams]`:\n"
                 for i, pl in enumerate(player_team.players):
-                    msg += f"`{i+1}.` {pl.lounge_name} ({pl.mmr} MMR)\n"
+                    msg += f"`{i+1}.` {pl.member.mention} {pl.lounge_name} ({pl.mmr} MMR)\n"
             await self.queue_or_send(ctx, msg)
             #await self.ongoing_mogi_checks()
             await self.check_room_channels(mogi)

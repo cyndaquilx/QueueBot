@@ -735,7 +735,7 @@ class SquadQueue(commands.Cog):
             if numLeftoverTeams == 0:
                 mogi.gathering = False
                 await self.lockdown(mogi.mogi_channel)
-                await mogi.mogi_channel.send("A sufficient amount of teams has been reached, so the mogi has been closed to extra teams. Rooms will be made within the next minute.")
+                await mogi.mogi_channel.send("A sufficient number of teams has been reached, so the mogi has been closed to extra teams. Rooms will be made within the next minute.")
 
     async def ongoing_mogi_checks(self):
         for mogi in self.ongoing_events.values():

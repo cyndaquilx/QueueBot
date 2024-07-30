@@ -7,9 +7,7 @@ headers = {'Content-type': 'application/json'}
 async def mk8dx_150cc_mmr(config, members):
     base_url = config["url"] + '/api/player?'
     players = []
-    async with aiohttp.ClientSession(
-        auth=aiohttp.BasicAuth(
-            config["username"], config["password"])) as session:
+    async with aiohttp.ClientSession() as session:
         for member in members:
             request_text = f"discordId={member.id}"
             request_url = base_url + request_text

@@ -318,7 +318,7 @@ class SquadQueue(commands.Cog):
     def get_list_messages(self, mogi):
         mogi_list = mogi.confirmed_list()
         sorted_mogi_list = sorted(mogi_list, reverse=True)
-        msg = f"`SQ #{mogi.sq_id} Mogi List`\n"
+        msg = f""
         for i in range(len(sorted_mogi_list)):
             msg += f"`{i+1}.` "
             msg += ", ".join([p.lounge_name for p in sorted_mogi_list[i].players])
@@ -330,7 +330,7 @@ class SquadQueue(commands.Cog):
             msg += f"`[{num_next}/{teams_per_room}] teams for {num_rooms} rooms`"
         lines = msg.split("\n")
         messages = []
-        curr_msg = ""
+        curr_msg = "`SQ #{mogi.sq_id} Mogi List`\n"
         for i, line in enumerate(lines):
             if len(curr_msg + line + "\n\n") > 2000:
                 messages.append(curr_msg)

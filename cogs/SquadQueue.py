@@ -331,11 +331,13 @@ class SquadQueue(commands.Cog):
         lines = msg.split("\n")
         messages = []
         curr_msg = ""
-        for line in lines:
-            if len(curr_msg + line + "\n") > 2000:
+        for i, line in enumerate(lines):
+            if len(curr_msg + line + "\n\n") > 2000:
                 messages.append(curr_msg)
                 curr_msg = ""
             curr_msg += f"{line}\n"
+            if (i+1) % (12/mogi.size) == 0:
+                curr_msg += "\n"
         if len(curr_msg) > 0:
             messages.append(curr_msg)
         return messages

@@ -330,7 +330,7 @@ class SquadQueue(commands.Cog):
             msg += f"`[{num_next}/{teams_per_room}] teams for {num_rooms} rooms`"
         lines = msg.split("\n")
         messages = []
-        curr_msg = "`SQ #{mogi.sq_id} Mogi List`\n"
+        curr_msg = f"`SQ #{mogi.sq_id} Mogi List`\n"
         for i, line in enumerate(lines):
             if len(curr_msg + line + "\n\n") > 2000:
                 messages.append(curr_msg)

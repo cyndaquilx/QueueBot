@@ -562,7 +562,7 @@ class SquadQueue(commands.Cog):
         for i, team in enumerate(room.teams):
             msg += f"Team {i+1} - {chr(ord('A')+i)}\n"
             for player in team.players:
-                msg += f"{player.lounge_name} [] 0\n"
+                msg += f"{player.lounge_name} [] {player.score}\n"
             msg += "\n"
         msg += f"`Fill out the scores for each player and then use the `!submit` command to submit the table."
         await ctx.send(msg)
@@ -992,7 +992,7 @@ class SquadQueue(commands.Cog):
             await interaction.response.send_message("Removed list channel")
         self.save_server_config()
         
-    #@commands.command()
+    @commands.command()
     #@commands.is_owner()
     async def add100(self, ctx):
         mogi = self.get_mogi(ctx)
@@ -1010,6 +1010,23 @@ class SquadQueue(commands.Cog):
             mogi.teams.append(squad)
         await ctx.send(f"Added {ctx.author.display_name} 100 times")
         await self.check_room_channels(mogi)
+    
+    @commands.Cog.listener()
+    async def on_message(self, message: discord.Message):
+        if message.author.bot or not (
+            message.content.isdecimal() and 12 <= int(
+                message.content) <= 180):
+            return
+        room = None
+        for mogi in self.ongoing_events.values():
+            room = mogi.get_room_from_thread(message.channel.id)
+            if room:
+                break
+        if not room:
+            return
+        player = room.get_player(message.author)
+        if player:
+            player.score = int(message.content)
 
 
 async def setup(bot):

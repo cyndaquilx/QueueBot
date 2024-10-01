@@ -65,6 +65,12 @@ class Room:
         self.thread = thread
         self.finished = False
 
+    def get_player(self, member):
+        for team in self.teams:
+            player = team.get_player(member)
+            if player:
+                return player
+
 class Team:
     def __init__ (self, players):
         self.players = players
@@ -135,3 +141,4 @@ class Player:
         self.lounge_name = lounge_name
         self.mmr = mmr
         self.confirmed = False
+        self.score = 0

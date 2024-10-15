@@ -558,7 +558,7 @@ class SquadQueue(commands.Cog):
                 break
         if not is_room_thread:
             return
-        msg = "`#RESULTS\n"
+        msg = f"`!submit {mogi.size} sq #RESULTS\n"
         for i, team in enumerate(room.teams):
             msg += f"Team {i+1} - {chr(ord('A')+i)}\n"
             for player in team.players:
@@ -992,7 +992,7 @@ class SquadQueue(commands.Cog):
             await interaction.response.send_message("Removed list channel")
         self.save_server_config()
         
-    @commands.command()
+    #@commands.command()
     #@commands.is_owner()
     async def add100(self, ctx):
         mogi = self.get_mogi(ctx)

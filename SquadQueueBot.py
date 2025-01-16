@@ -6,7 +6,7 @@ import asyncio
 from util import get_config, LeaderboardNotFoundException, GuildNotFoundException
 from models import BotConfig
 
-config: BotConfig = get_config('./new_config.json')
+config: BotConfig = get_config('./config.json')
 
 logging.basicConfig(level=logging.INFO,
                     datefmt='%Y-%m-%d %H:%M:%S',

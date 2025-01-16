@@ -3,6 +3,10 @@ from discord.ext import commands
 import json
 import logging
 import asyncio
+from util import get_config, LeaderboardNotFoundException, GuildNotFoundException
+from models import BotConfig
+
+config: BotConfig = get_config('./new_config.json')
 
 logging.basicConfig(level=logging.INFO,
                     datefmt='%Y-%m-%d %H:%M:%S',
@@ -13,19 +17,13 @@ intents = discord.Intents.default()
 intents.members = True
 intents.message_content = True
 bot = commands.Bot(command_prefix=['!', '^'], case_insensitive=True, intents=intents)
+bot.config = config
 
 initial_extensions = ['cogs.SquadQueue']
-
-with open('./config.json', 'r') as cjson:
-    bot.config = json.load(cjson)
 
 @bot.event
 async def on_ready():
     print("Logged in as {0.user}".format(bot))
-
-##if __name__ == '__main__':
-##    for extension in initial_extensions:
-##        bot.load_extension(extension)
 
 @bot.event
 async def on_command_error(ctx, error):
@@ -54,14 +52,17 @@ async def on_command_error(ctx, error):
     if isinstance(error, commands.NoPrivateMessage):
         await(await ctx.send("You can't use this command in DMs!")).delete(delay=5)
         return
+    if isinstance(error, LeaderboardNotFoundException):
+        return
+    if isinstance(error, GuildNotFoundException):
+        await(await ctx.send("You cannot use this command in this server!")).delete(delay=10)
+        return
     raise error
-
-#bot.run(config["token"])
 
 async def main():
     async with bot:
         for extension in initial_extensions:
             await bot.load_extension(extension)
-        await bot.start(bot.config["token"])
+        await bot.start(bot.config.token)
 
 asyncio.run(main())

@@ -28,3 +28,14 @@ async def leaderboard_autocomplete(interaction: discord.Interaction, current: st
         return []
     choices = [app_commands.Choice(name=lb, value=lb) for lb in server_info.leaderboards]
     return choices
+
+async def format_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[int]]:
+    server_info: ServerConfig | None = interaction.client.config.servers.get(interaction.guild_id, None)
+    if not server_info:
+        return []
+    valid_formats = []
+    for lb in server_info.leaderboards.values():
+        valid_formats.extend(lb.valid_formats)
+    valid_formats = set(valid_formats)
+    choices = [app_commands.Choice(name=f"{f}v{f}" if f > 1 else "FFA", value=f) for f in valid_formats]
+    return choices

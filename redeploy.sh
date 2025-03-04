@@ -1,5 +1,4 @@
 #!/bin/bash
-docker cp mk8dx-sqbot:/app/server_config.json .
 docker build --tag mk8dx-sqbot .
 docker stop mk8dx-sqbot
 docker rm mk8dx-sqbot

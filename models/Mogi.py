@@ -23,19 +23,19 @@ class Team:
                 return False
         return True
 
-    def has_player(self, member):
+    def has_player(self, member: discord.Member):
         for player in self.players:
             if player.member.id == member.id:
                 return True
         return False
 
-    def get_player(self, member):
+    def get_player(self, member: discord.Member):
         for player in self.players:
             if player.member.id == member.id:
                 return player
         return None
 
-    def sub_player(self, sub_out, sub_in):
+    def sub_player(self, sub_out: Player, sub_in: Player):
         for i, player in enumerate(self.players):
             if player == sub_out:
                 self.players[i] = sub_in
@@ -75,7 +75,7 @@ class Room:
         self.thread = thread
         self.finished = False
 
-    def get_player(self, member):
+    def get_player(self, member: discord.Member):
         for team in self.teams:
             player = team.get_player(member)
             if player:

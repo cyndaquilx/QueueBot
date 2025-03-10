@@ -1,26 +1,83 @@
 {
-	"token": "insert token here",
+    "token": "insert token here",
 	"application_id": 767487399176962058,
-	
-	"admin_roles": {"445404006177570829": ["Administrator", "Lounge Staff"]},
-	"staff_roles": {"445404006177570829": [910528103225389107]},
-	
-	"mogichannel": 772517883107475516,
-
-	"members_for_channels": {"445404006177570829": [743532508343304242, 459860530618695681, 735910635082219570]},
-
-	"channel_category_position": 5,
-	"channels_per_category": 25,
-
-	"queue_messages": true,
-	"sec_between_queue_msgs": 2,
-
-	"username": "username",
-	"password": "password",
-	"url": "https://www.mk8dx-lounge.com",
-
-	"TIME_ADJUSTMENT": 0,
-	"QUEUE_OPEN_TIME": 75,
-	"JOINING_TIME": 70,
-	"EXTENSION_TIME": 3
+    "servers": {
+        "741867051035000853": {
+            "admin_roles": [
+                741867846770098276
+            ],
+            "staff_roles": [
+                741867846770098276
+            ],
+            "leaderboards": {
+                "mk8dx": {
+                    "website_credentials": {
+                        "url": "https://www.mk8dx-lounge.com",
+                        "username": "admin",
+                        "password": "admin"
+                    },
+                    "time_settings": {
+                        "queue_open_time": 75,
+                        "joining_time": 70,
+                        "extension_time": 3
+                    },
+                    "players_per_mogi": 24,
+                    "points_per_race": 82,
+                    "races_per_mogi": 12,
+                    "gps_per_mogi": 1,
+                    "valid_formats": [
+                        1,
+                        2,
+                        3,
+                        4,
+                        6,
+                        8
+                    ],
+                    "join_channel": 741906846209671223,
+                    "list_channel": 741903711449776218,
+                    "pinged_member_ids": [],
+                    "queue_messages": true,
+                    "sec_between_queue_msgs": 2
+                }
+            }
+        },
+        "445404006177570829": {
+            "admin_roles": [
+                464610815299944448
+            ],
+            "staff_roles": [
+                910528103225389107
+            ],
+            "leaderboards": {
+                "mk8dx": {
+                    "website_credentials": {
+                        "url": "https://www.mk8dx-lounge.com",
+                        "username": "admin",
+                        "password": "admin"
+                    },
+                    "time_settings": {
+                        "queue_open_time": 75,
+                        "joining_time": 70,
+                        "extension_time": 3
+                    },
+                    "players_per_mogi": 12,
+                    "points_per_race": 82,
+                    "races_per_mogi": 12,
+                    "gps_per_mogi": 1,
+                    "valid_formats": [
+                        1,
+                        2,
+                        3,
+                        4,
+                        6
+                    ],
+                    "join_channel": 772517883107475516,
+                    "list_channel": 1201709359206236180,
+                    "pinged_member_ids": [743532508343304242, 459860530618695681, 735910635082219570],
+                    "queue_messages": true,
+	                "sec_between_queue_msgs": 2
+                }
+            }
+        }
+    }
 }

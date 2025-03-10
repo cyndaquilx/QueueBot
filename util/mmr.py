@@ -4,7 +4,7 @@ from models import Player, LeaderboardConfig
 
 headers = {'Content-type': 'application/json'}
 
-async def mk8dx_150cc_mmr(lb: LeaderboardConfig, members: list[discord.Member]):
+async def lounge_api_mmr(lb: LeaderboardConfig, members: list[discord.Member]):
     base_url = lb.website_credentials.url + '/api/player?'
     players: list[Player] = []
     async with aiohttp.ClientSession() as session:
@@ -23,7 +23,7 @@ async def mk8dx_150cc_mmr(lb: LeaderboardConfig, members: list[discord.Member]):
     return players
 
 async def get_mmr(lb: LeaderboardConfig, members: list[discord.Member]):
-    return await mk8dx_150cc_mmr(lb, members)
+    return await lounge_api_mmr(lb, members)
 
 async def mk8dx_150cc_fc(config, name):
     base_url = config["url"] + '/api/player?'

@@ -6,15 +6,12 @@ from dateutil.parser import parse
 from datetime import datetime, timedelta
 import time
 import json
-from mmr import get_mmr, mk8dx_150cc_fc
 from models.Mogi import Mogi, Team, Player, Room
 from models.Config import LeaderboardConfig
-from util import get_server_config, leaderboard_autocomplete, get_leaderboard_slash, format_autocomplete
-
-#Scheduled_Event = collections.namedtuple('Scheduled_Event', 'size time started mogi_channel')
+from util import get_server_config, leaderboard_autocomplete, get_leaderboard_slash, format_autocomplete, get_mmr
 
 class SquadQueue(commands.Cog):
-    def __init__(self, bot):
+    def __init__(self, bot: commands.Bot):
         self.bot = bot
         
         # keys are discord.Guild objects, values are list of Mogi instances
@@ -33,18 +30,12 @@ class SquadQueue(commands.Cog):
             self.timezones = json.load(cjson)
 
     async def lockdown(self, channel:discord.TextChannel):
-        # everyone_perms = channel.permissions_for(channel.guild.default_role)
-        # if not everyone_perms.send_messages:
-        #     return
         overwrite = channel.overwrites_for(channel.guild.default_role)
         overwrite.send_messages = False
         await channel.set_permissions(channel.guild.default_role, overwrite=overwrite)
         await channel.send("Locked down " + channel.mention)
 
     async def unlockdown(self, channel:discord.TextChannel):
-        # everyone_perms = channel.permissions_for(channel.guild.default_role)
-        # if everyone_perms.send_messages:
-        #     return
         overwrite = channel.overwrites_for(channel.guild.default_role)
         overwrite.send_messages = None
         await channel.set_permissions(channel.guild.default_role, overwrite=overwrite)
@@ -484,37 +475,17 @@ class SquadQueue(commands.Cog):
     @commands.cooldown(1, 60, commands.BucketType.channel)
     async def staff(self, ctx: commands.Context):
         """Calls staff to the current channel. Only works in thread channels for SQ rooms."""
-        is_room_thread = False
-        for mogi in self.ongoing_events.values():
-            if mogi.is_room_thread(ctx.channel.id):
-                is_room_thread = True
+        mogi = None
+        for m in self.ongoing_events.values():
+            if m.is_room_thread(ctx.channel.id):
+                mogi = m
                 break
-        if not is_room_thread:
+        if mogi is None:
             return
-        if str(ctx.guild.id) not in ctx.bot.config["staff_roles"].keys():
-            await ctx.send("There is no Lounge Staff role configured for this server")
-            return
-        lounge_staff_roles = ctx.bot.config["staff_roles"][str(ctx.guild.id)]
+        server_config = get_server_config(ctx)
+        lounge_staff_roles = server_config.staff_roles
         mentions = " ".join([ctx.guild.get_role(role).mention for role in lounge_staff_roles])
         await ctx.send(mentions)
-
-    #@commands.command()
-    async def fc(self, ctx: commands.Context, *, name=None):
-        """Displays the FC for the given player. Only works in thread channels for SQ rooms."""
-        is_room_thread = False
-        for mogi in self.ongoing_events.values():
-            if mogi.is_room_thread(ctx.channel.id):
-                is_room_thread = True
-                break
-        if not is_room_thread:
-            return
-        if name is None:
-            name = ctx.author.display_name
-        player_fc = await mk8dx_150cc_fc(self.bot.config, name)
-        if player_fc is not None:
-            await ctx.send(player_fc)
-        else:
-            await ctx.send("Player not found!")
 
     @commands.command()
     async def scoreboard(self, ctx: commands.Context):
@@ -536,17 +507,6 @@ class SquadQueue(commands.Cog):
             msg += "\n"
         msg += f"`Fill out the scores for each player and then use the `!submit` command to submit the table."
         await ctx.send(msg)
-
-    @commands.command()
-    async def lt(self, ctx):
-        is_room_thread = False
-        for mogi in self.ongoing_events.values():
-            if mogi.is_room_thread(ctx.channel.id):
-                is_room_thread = True
-                break
-        if not is_room_thread:
-            return
-        await ctx.send("Stats bot cannot read messages in threads, so this command will not work. Please use `!scoreboard` to make the table.")
 
     # make thread channels while the event is gathering instead of at the end,
     # since discord only allows 50 thread channels to be created per 5 minutes.
@@ -872,9 +832,10 @@ class SquadQueue(commands.Cog):
     @commands.guild_only()
     async def view_schedule(self, ctx: commands.Context, copy_paste=""):
         """View the SQ schedule. Use !view_schedule cp to get a copy/pastable version"""
-        if ctx.guild not in self.scheduled_events.keys():
+        server_events = self.scheduled_events.get(ctx.guild, None)
+        if server_events is None:
             await ctx.send("There are no SQ events scheduled in this server yet. Use /schedule_event to schedule one.")
-        server_schedule = sorted(self.scheduled_events[ctx.guild], key = lambda event: event.sq_id)
+        server_schedule = sorted(server_events, key = lambda event: event.sq_id)
         if len(server_schedule) == 0:
             await ctx.send("There are no SQ events scheduled in this server yet. Use /schedule_event to schedule one.")
             return

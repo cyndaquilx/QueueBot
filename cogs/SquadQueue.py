@@ -382,13 +382,6 @@ class SquadQueue(commands.Cog):
             await channel.delete_messages(messages_to_delete)
         except Exception as e:
             print(e, flush=True)
-
-    async def start_input_validation(self, ctx, size:int, sq_id:int):
-        valid_sizes = [1, 2, 3, 4, 6]
-        if size not in valid_sizes:
-            await(await ctx.send(f"The size you entered is invalid; proper values are: {', '.join(valid_sizes)}")).delete(delay=5)
-            return False
-        return True
         
     #check if user has roles defined in config.json
     async def has_roles(self, ctx: commands.Context):
@@ -398,23 +391,6 @@ class SquadQueue(commands.Cog):
             if ctx.author.get_role(role_id):
                 return True
         return False
-
-    @commands.command()
-    @commands.guild_only()
-    async def start(self, ctx: commands.Context, size:int, sq_id:int):
-        """Start a mogi in the current channel"""
-        if not await self.has_roles(ctx):
-            return
-        if not await self.start_input_validation(ctx, size, sq_id):
-            return
-        if ctx.channel in self.ongoing_events.keys():
-            await ctx.send("There is already a mogi happening in this channel, so you can't use this command")
-            return
-        m = Mogi(sq_id, size, ctx.channel)
-        m.started = True
-        m.gathering = True
-        self.ongoing_events[ctx.channel] = m
-        await ctx.send(f"A {size}v{size} mogi has been started - @here Type `!c`, `!d`, or `!list`")
         
     @commands.command()
     @commands.guild_only()

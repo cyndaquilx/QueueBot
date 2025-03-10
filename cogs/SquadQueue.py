@@ -1,12 +1,11 @@
 import discord
 from discord.ext import commands, tasks
 from discord import app_commands
-from discord.app_commands import Choice
 from dateutil.parser import parse
 from datetime import datetime, timedelta
 import time
 import json
-from models.Mogi import Mogi, Team, Player, Room
+from models.Mogi import Mogi, Team, Room
 from models.Config import LeaderboardConfig
 from util import get_server_config, leaderboard_autocomplete, get_leaderboard_slash, format_autocomplete, get_mmr
 

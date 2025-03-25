@@ -785,9 +785,10 @@ class SquadQueue(commands.Cog):
         return(f"`#{mogi.sq_id}` **{mogi.size}v{mogi.size}:** {mogi_time} - {mogi_time_relative}")
 
     @app_commands.command(name="remove_event")
-    async def remove_event(self, interaction:discord.Interaction, event_id:int, channel:discord.TextChannel):
+    async def remove_event(self, interaction:discord.Interaction, event_id:int):
         """Removes an event from the schedule"""
-        if not await self.has_roles(interaction.user, interaction.guild_id, self.bot.config):
+        ctx = await commands.Context.from_interaction(interaction)
+        if not await self.has_roles(ctx):
             await interaction.response.send_message("You do not have permissions to use this command",ephemeral=True)
             return
         if interaction.guild not in self.scheduled_events.keys():
@@ -795,10 +796,10 @@ class SquadQueue(commands.Cog):
                                                     ephemeral=True)
             return
         for event in self.scheduled_events[interaction.guild]:
-            if event.sq_id == event_id and event.mogi_channel == channel:
+            if event.sq_id == event_id:
                 self.scheduled_events[interaction.guild].remove(event)
                 if event.discord_event:
-                    await event.discord_event.edit(status=discord.EventStatus.cancelled, end_time=event.discord_event.end_time, location=event.discord_event.location)
+                    await event.discord_event.cancel()
                 await interaction.response.send_message(f"Removed the following event:\n{self.get_event_str(event)}")
                 return
         await interaction.response.send_message("This event number isn't in the schedule. Do `!view_schedule` to see the scheduled events.")

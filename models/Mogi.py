@@ -1,5 +1,6 @@
 import discord
 from .Config import LeaderboardConfig
+from datetime import datetime
             
 class Player:
     def __init__ (self, member:discord.Member, lounge_name: str, mmr: int):
@@ -83,7 +84,7 @@ class Room:
             
 class Mogi:
     def __init__ (self, sq_id:int, size:int, mogi_channel:discord.TextChannel, leaderboard: LeaderboardConfig,
-                  is_automated=False, start_time=None, discord_event=None):
+                  is_automated = False, start_time: datetime | None = None, discord_event: discord.ScheduledEvent | None = None):
         self.started = False
         self.gathering = False
         self.making_rooms_run = False

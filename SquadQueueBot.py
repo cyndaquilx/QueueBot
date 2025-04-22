@@ -4,7 +4,7 @@ import json
 import logging
 import asyncio
 from util import get_config, LeaderboardNotFoundException, GuildNotFoundException
-from models import BotConfig
+from models import BotConfig, SquadQueueBot
 
 config: BotConfig = get_config('./config.json')
 
@@ -16,8 +16,7 @@ logging.basicConfig(level=logging.INFO,
 intents = discord.Intents.default()
 intents.members = True
 intents.message_content = True
-bot = commands.Bot(command_prefix=['!', '^'], case_insensitive=True, intents=intents)
-bot.config = config
+bot = SquadQueueBot(config=config, command_prefix=['!', '^'], case_insensitive=True, intents=intents)
 
 initial_extensions = ['cogs.SquadQueue']
 
@@ -39,7 +38,7 @@ async def on_command_error(ctx, error):
         return
     if isinstance(error, commands.MissingAnyRole):
         await(await ctx.send("You need one of the following roles to use this command: `%s`"
-                             % (", ".join(error.missing_roles)))
+                             % (", ".join([str(r) for r in error.missing_roles])))
               ).delete(delay=10)
         return
     if isinstance(error, commands.BadArgument):
@@ -47,7 +46,7 @@ async def on_command_error(ctx, error):
         return
     if isinstance(error, commands.BotMissingPermissions):
         await(await ctx.send("I need the following permissions to use this command: %s"
-                       % ", ".join(error.missing_perms))).delete(delay=10)
+                       % ", ".join([str(p) for p in error.missing_permissions]))).delete(delay=10)
         return
     if isinstance(error, commands.NoPrivateMessage):
         await(await ctx.send("You can't use this command in DMs!")).delete(delay=5)

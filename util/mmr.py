@@ -6,7 +6,7 @@ headers = {'Content-type': 'application/json'}
 
 async def lounge_api_mmr(lb: LeaderboardConfig, members: list[discord.Member]):
     base_url = lb.website_credentials.url + '/api/player?'
-    players: list[Player] = []
+    players: list[Player | None] = []
     async with aiohttp.ClientSession() as session:
         for member in members:
             request_text = f"discordId={member.id}"

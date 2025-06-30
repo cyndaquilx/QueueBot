@@ -6,6 +6,8 @@ headers = {'Content-type': 'application/json'}
 
 async def lounge_api_mmr(lb: LeaderboardConfig, members: list[discord.Member]):
     base_url = lb.website_credentials.url + '/api/player?'
+    if lb.website_credentials.game:
+        base_url += f"game={lb.website_credentials.game}&"
     players: list[Player | None] = []
     async with aiohttp.ClientSession() as session:
         for member in members:
@@ -24,16 +26,3 @@ async def lounge_api_mmr(lb: LeaderboardConfig, members: list[discord.Member]):
 
 async def get_mmr(lb: LeaderboardConfig, members: list[discord.Member]):
     return await lounge_api_mmr(lb, members)
-
-async def mk8dx_150cc_fc(config, name):
-    base_url = config["url"] + '/api/player?'
-    request_url = base_url + f'name={name}'
-    async with aiohttp.ClientSession() as session:
-        async with session.get(request_url, headers=headers) as resp:
-            if resp.status != 200:
-                return None
-            player_data = await resp.json()
-            if 'switchFc' not in player_data.keys():
-                return None
-            return player_data['switchFc']
-

@@ -83,12 +83,13 @@ class Room:
                 return player
             
 class Mogi:
-    def __init__ (self, sq_id:int, size:int, mogi_channel:discord.TextChannel, leaderboard: LeaderboardConfig,
+    def __init__ (self, sq_id:int, size:int, room_size: int, mogi_channel:discord.TextChannel, leaderboard: LeaderboardConfig,
                   is_automated = False, start_time: datetime | None = None, discord_event: discord.ScheduledEvent | None = None):
         self.started = False
         self.gathering = False
         self.making_rooms_run = False
         self.sq_id = sq_id
+        self.room_size = room_size
         self.size = size
         self.mogi_channel = mogi_channel
         self.leaderboard = leaderboard

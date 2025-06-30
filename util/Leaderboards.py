@@ -44,3 +44,15 @@ async def format_autocomplete(interaction: discord.Interaction[SquadQueueBot], c
     valid_formats = set(valid_formats)
     choices = [app_commands.Choice(name=f"{f}v{f}" if f > 1 else "FFA", value=f) for f in valid_formats]
     return choices
+
+async def room_size_autocomplete(interaction: discord.Interaction[SquadQueueBot], current: str) -> list[app_commands.Choice[int]]:
+    assert interaction.guild_id is not None
+    server_info: ServerConfig | None = interaction.client.config.servers.get(interaction.guild_id, None)
+    if not server_info:
+        return []
+    valid_sizes = []
+    for lb in server_info.leaderboards.values():
+        valid_sizes.extend(lb.valid_room_sizes)
+    valid_sizes = set(valid_sizes)
+    choices = [app_commands.Choice(name=f"{p} players", value=p) for p in valid_sizes]
+    return choices

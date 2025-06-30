@@ -5,6 +5,7 @@ class WebsiteCredentials:
     url: str
     username: str
     password: str
+    game: str | None
 
 @dataclass
 class TimeSettings:
@@ -16,10 +17,7 @@ class TimeSettings:
 class LeaderboardConfig:
     website_credentials: WebsiteCredentials
     time_settings: TimeSettings
-    players_per_mogi: int
-    points_per_race: int
-    races_per_mogi: int
-    gps_per_mogi: int
+    valid_room_sizes: list[int]
     valid_formats: list[int]
     join_channel: int
     list_channel: int

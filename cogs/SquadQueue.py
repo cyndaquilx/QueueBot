@@ -7,7 +7,8 @@ import time
 import json
 from models.Mogi import Mogi, Team, Room, Player
 from models.Config import LeaderboardConfig
-from util import get_server_config, leaderboard_autocomplete, get_leaderboard_slash, format_autocomplete, get_mmr
+from models import SquadQueueBot
+from util import get_server_config, leaderboard_autocomplete, get_leaderboard_slash, format_autocomplete, get_mmr, room_size_autocomplete
 
 class SquadQueue(commands.Cog):
     def __init__(self, bot: commands.Bot):
@@ -312,7 +313,7 @@ class SquadQueue(commands.Cog):
             msg += f"`{i+1}.` "
             msg += ", ".join([p.lounge_name for p in sorted_mogi_list[i].players])
             msg += f" ({sorted_mogi_list[i].avg_mmr:.1f} MMR)\n"
-        players_per_mogi = mogi.leaderboard.players_per_mogi
+        players_per_mogi = mogi.room_size
         if(len(sorted_mogi_list) % (players_per_mogi/mogi.size) != 0):
             num_next = int(len(sorted_mogi_list) % (players_per_mogi/mogi.size))
             teams_per_room = int(players_per_mogi/mogi.size)
@@ -503,7 +504,7 @@ class SquadQueue(commands.Cog):
     # since discord only allows 50 thread channels to be created per 5 minutes.
     async def check_room_channels(self, mogi: Mogi):
         num_teams = mogi.count_registered()
-        players_per_mogi = mogi.leaderboard.players_per_mogi
+        players_per_mogi = mogi.room_size
         num_rooms = int(num_teams / (players_per_mogi/mogi.size))
         num_created_rooms = len(mogi.rooms)
         if num_created_rooms >= num_rooms:
@@ -529,7 +530,7 @@ class SquadQueue(commands.Cog):
             return
         if mogi.making_rooms_run and started_automatically:
             return
-        players_per_mogi = mogi.leaderboard.players_per_mogi
+        players_per_mogi = mogi.room_size
         num_rooms = int(mogi.count_registered() / (players_per_mogi/mogi.size))
         if num_rooms == 0:
             await mogi.mogi_channel.send(f"Not enough players to fill a room! Try this command with at least {int(players_per_mogi/mogi.size)} teams")
@@ -546,7 +547,7 @@ class SquadQueue(commands.Cog):
             pen_time -= 60
         while start_time >= 60:
             start_time -= 60
-        players_per_mogi = mogi.leaderboard.players_per_mogi
+        players_per_mogi = mogi.room_size
         teams_per_room = int(players_per_mogi/mogi.size)
         num_teams = int(num_rooms * teams_per_room)
         final_list = mogi.confirmed_list()[0:num_teams]
@@ -662,7 +663,7 @@ class SquadQueue(commands.Cog):
         joining_time = timedelta(minutes=ts.joining_time)
         assert mogi.start_time is not None
         if mogi.start_time - queue_open_time + joining_time <= cur_time:
-            players_per_mogi = mogi.leaderboard.players_per_mogi
+            players_per_mogi = mogi.room_size
             numLeftoverTeams = mogi.count_registered() % int((players_per_mogi/mogi.size))
             if numLeftoverTeams == 0:
                 mogi.gathering = False
@@ -685,7 +686,7 @@ class SquadQueue(commands.Cog):
                 continue
             if mogi.start_time - queue_open_time + joining_time <= cur_time:
                 #check if there are an even amount of teams since we are past the queue time
-                players_per_mogi = mogi.leaderboard.players_per_mogi
+                players_per_mogi = mogi.room_size
                 numLeftoverTeams = mogi.count_registered() % int((players_per_mogi/mogi.size))
                 if numLeftoverTeams == 0:
                     await self.add_teams_to_rooms(mogi, (mogi.start_time.minute)%60, True)
@@ -742,9 +743,10 @@ class SquadQueue(commands.Cog):
     @app_commands.command(name="schedule_event")
     @app_commands.autocomplete(size=format_autocomplete)
     @app_commands.autocomplete(leaderboard=leaderboard_autocomplete)
+    @app_commands.autocomplete(room_size=room_size_autocomplete)
     @app_commands.guild_only()
-    async def schedule_event(self, interaction:discord.Interaction,
-                       sq_id: int, size:int, 
+    async def schedule_event(self, interaction:discord.Interaction[SquadQueueBot],
+                       sq_id: int, size:int, room_size: int,
                        schedule_time:str, timezone:str, leaderboard: str | None):
         """Schedules an SQ event in the given channel at the given time."""
         assert interaction.guild is not None
@@ -777,11 +779,14 @@ class SquadQueue(commands.Cog):
             "ex. EDT instead of EST if it's summer), and that you've entered the date if it's not today")
             return
         size_name = f"{size}v{size}" if size > 1 else "FFA"
+        if room_size not in lb.valid_room_sizes:
+            await interaction.response.send_message(f"Invalid room size. Valid room sizes for this server are: {lb.valid_room_sizes}")
+            return
         if size not in lb.valid_formats:
             await interaction.response.send_message(f"Invalid format. Valid formats for this server are: {lb.valid_formats}")
             return
-        if lb.players_per_mogi % size != 0:
-            await interaction.response.send_message(f"The entered format ({size_name}) is not divisible by the number of players in this server's config ({lb.players_per_mogi}).")
+        if room_size % size != 0:
+            await interaction.response.send_message(f"The entered format ({size_name}) is not divisible by the specified room size ({room_size}).")
             return
         channel = ctx.bot.get_channel(lb.join_channel)
 
@@ -790,13 +795,13 @@ class SquadQueue(commands.Cog):
         if event_start_time < discord.utils.utcnow():
             #have to add 1 minute here, because utcnow() will technically be the past when the API request is sent
             event_start_time = discord.utils.utcnow() + timedelta(minutes=1)
-        discord_event = await interaction.guild.create_scheduled_event(name=f"SQ #{sq_id}: {size_name} gathering players",
+        discord_event = await interaction.guild.create_scheduled_event(name=f"SQ #{sq_id}: {room_size}p {size_name} gathering players",
                                                        start_time = event_start_time,
                                                        end_time = event_end_time,
                                                        privacy_level = discord.PrivacyLevel.guild_only,
                                                        entity_type = discord.EntityType.external,
                                                        location=channel.mention)
-        mogi = Mogi(sq_id, size, channel, lb, is_automated=True, start_time=actual_time, discord_event=discord_event)
+        mogi = Mogi(sq_id, size, room_size, channel, lb, is_automated=True, start_time=actual_time, discord_event=discord_event)
         if interaction.guild not in self.scheduled_events.keys():
             self.scheduled_events[interaction.guild] = []
         self.scheduled_events[interaction.guild].append(mogi)
@@ -808,7 +813,7 @@ class SquadQueue(commands.Cog):
         assert mogi.start_time is not None
         mogi_time = discord.utils.format_dt(mogi.start_time, style="F")
         mogi_time_relative = discord.utils.format_dt(mogi.start_time, style="R")
-        return(f"`#{mogi.sq_id}` **{mogi.size}v{mogi.size}:** {mogi_time} - {mogi_time_relative}")
+        return(f"`#{mogi.sq_id}` **{mogi.room_size}p {mogi.size}v{mogi.size}:** {mogi_time} - {mogi_time_relative}")
 
     @app_commands.command(name="remove_event")
     @app_commands.guild_only()
@@ -944,5 +949,5 @@ class SquadQueue(commands.Cog):
         if player:
             player.score = int(message.content)
 
-async def setup(bot):
+async def setup(bot: SquadQueueBot):
     await bot.add_cog(SquadQueue(bot))

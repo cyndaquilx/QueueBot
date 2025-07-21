@@ -746,7 +746,7 @@ class SquadQueue(commands.Cog):
     @app_commands.autocomplete(room_size=room_size_autocomplete)
     @app_commands.guild_only()
     async def schedule_event(self, interaction:discord.Interaction[SquadQueueBot],
-                       sq_id: int, size:int, room_size: int,
+                       sq_id: int, room_size: int, size:int,
                        schedule_time:str, timezone:str, leaderboard: str | None):
         """Schedules an SQ event in the given channel at the given time."""
         assert interaction.guild is not None

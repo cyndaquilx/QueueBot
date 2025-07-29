@@ -650,7 +650,7 @@ class SquadQueue(commands.Cog):
                         mogi.started = True
                         mogi.gathering = True
                         await self.unlockdown(mogi.mogi_channel)
-                        await mogi.mogi_channel.send(f"A {mogi.size}v{mogi.size} mogi has been started - @here Type `!c`, `!d`, or `!list`")
+                        await mogi.mogi_channel.send(f"A {mogi.size}v{mogi.size} mogi has been started - Type `!c`, `!d`, or `!list`")
             for ind in reversed(to_remove):
                 del guild[ind]
 

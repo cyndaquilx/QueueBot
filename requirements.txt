@@ -1,3 +1,4 @@
-aiohttp==3.8.4
-discord.py @ git+https://github.com/Rapptz/discord.py@0e58a927ddbc300a17ef0137d948faa659565313
+aiohttp==3.11.13
+discord.py==2.5.2
+msgspec==0.19.0
 python-dateutil==2.8.2

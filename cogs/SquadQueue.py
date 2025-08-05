@@ -855,10 +855,17 @@ class SquadQueue(commands.Cog):
             msg += "```"
         for event in server_schedule:
             msg += f"{self.get_event_str(event)}\n"
+            if len(msg) > 1500:
+                if copy_paste == "cp":
+                    msg += "```"
+                await ctx.send(msg)
+                msg = ""
+                if copy_paste == "cp":
+                    msg += "```"
         if copy_paste == "cp":
             msg += "```"
-        await ctx.send(msg)
-        return
+        if len(msg):
+            await ctx.send(msg)
 
     @commands.command()
     @commands.guild_only()

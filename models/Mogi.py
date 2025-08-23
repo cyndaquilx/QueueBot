@@ -1,6 +1,6 @@
 import discord
 from .Config import LeaderboardConfig
-from datetime import datetime
+from datetime import datetime, timezone
             
 class Player:
     def __init__ (self, member:discord.Member, lounge_name: str, mmr: int):
@@ -14,15 +14,11 @@ class Team:
     def __init__ (self, players: list[Player]):
         self.players = players
         self.avg_mmr = sum([p.mmr for p in self.players]) / len(self.players)
+        self.created_at = datetime.now(timezone.utc)
+        self.confirmed_at: datetime | None = None
 
     def recalc_avg(self):
         self.avg_mmr = sum([p.mmr for p in self.players]) / len(self.players)
-
-    def is_registered(self):
-        for player in self.players:
-            if player.confirmed is False:
-                return False
-        return True
 
     def has_player(self, member: discord.Member):
         for player in self.players:
@@ -107,19 +103,32 @@ class Mogi:
             if team.has_player(member):
                 return team
         return None
+    
+    def check_team_is_registered(self, team: Team):
+        if len(team.players) < self.size:
+            return False
+        for player in team.players:
+            if player.confirmed is False:
+                return False
+        return True
 
     def count_registered(self):
         count = 0
         for team in self.teams:
-            if team.is_registered():
+            if self.check_team_is_registered(team):
                 count += 1
         return count
 
     def confirmed_list(self):
         confirmed: list[Team] = []
         for team in self.teams:
-            if team.is_registered():
+            if self.check_team_is_registered(team):
                 confirmed.append(team)
+        def team_sort(t: Team):
+            if t.confirmed_at:
+                return t.confirmed_at
+            return datetime.max
+        confirmed.sort(key=team_sort)
         return confirmed
 
     def remove_id(self, squad_id:int):

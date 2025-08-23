@@ -2,7 +2,7 @@ import discord
 from discord.ext import commands, tasks
 from discord import app_commands
 from dateutil.parser import parse
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import time
 import json
 from models.Mogi import Mogi, Team, Room, Player
@@ -92,11 +92,42 @@ class SquadQueue(commands.Cog):
             await ctx.send("Mogi is closed; players cannot join or drop from the event")
             return False
         return True
+    
+    async def check_members(self, ctx: commands.Context[SquadQueueBot], mogi: Mogi, members:list[discord.Member]):
+        if len(members) != len(set(members)):
+            await self.queue_or_send(ctx, mogi.leaderboard, f"{ctx.author.mention}, duplicate players are not allowed for a squad, please try again")
+            return None
+        for member in members:
+            player_team = mogi.check_player(member)
+            if player_team is not None:
+                p = player_team.get_player(member)
+                assert p is not None
+                msg = f"{p.lounge_name} is already in a squad for this event `("
+                msg += ", ".join([pl.lounge_name for pl in player_team.players])
+                msg += ")` They should type `!d` if this is an error."
+                await self.queue_or_send(ctx, mogi.leaderboard, msg)
+                return None
+        # checking players' mmr
+        players = await get_mmr(mogi.leaderboard, members)
+        not_found = []
+        found_players: list[Player] = []
+        for i, player in enumerate(players):
+            if player is None:
+                not_found.append(members[i].display_name)
+            else:
+                found_players.append(player)
+        if len(not_found) > 0:
+            msg = f"{ctx.author.mention} MMR for the following players could not be found: "
+            msg += ", ".join(not_found)
+            msg += ". Please contact a staff member for help"
+            await self.queue_or_send(ctx, mogi.leaderboard, msg)
+            return None
+        return found_players
 
     @commands.command(aliases=['c'])
     @commands.max_concurrency(number=1, wait=True)
     @commands.guild_only()
-    async def can(self, ctx: commands.Context, members:commands.Greedy[discord.Member]):
+    async def can(self, ctx: commands.Context[SquadQueueBot], members:commands.Greedy[discord.Member]):
         """Tag your partners to invite them to a mogi or accept a invitation to join a mogi"""
         mogi = self.get_mogi(ctx)
         if mogi is None:
@@ -113,11 +144,16 @@ class SquadQueue(commands.Cog):
             assert p is not None
             # if player is in a squad already but tries to make a new one
             if len(members) > 0:
-                msg = f"{p.lounge_name} is already in a squad for this event `("
-                msg += ", ".join([pl.lounge_name for pl in player_team.players])
-                msg += f")`, so you cannot create a new squad. Please type `!d` if this is an error."
-                await self.queue_or_send(ctx, mogi.leaderboard, msg)
-                return
+                # if everyone the message author has mentioned is also in their current squad,
+                # we should just treat it as if they are doing the !c command with no arguments
+                # (QOL feature)
+                for member in members:
+                    if not player_team.get_player(member):
+                        msg = f"{p.lounge_name} is already in a squad for this event `("
+                        msg += ", ".join([pl.lounge_name for pl in player_team.players])
+                        msg += f")`, so you cannot create a new squad. Please type `!d` if this is an error."
+                        await self.queue_or_send(ctx, mogi.leaderboard, msg)
+                        return
             # if player already said !c, give error msg
             if p.confirmed:
                 await self.queue_or_send(ctx, mogi.leaderboard, f"{p.lounge_name} has already confirmed for this event; type `!d` to drop")
@@ -126,11 +162,15 @@ class SquadQueue(commands.Cog):
             confirm_count = player_team.num_confirmed()
             msg = f"{p.lounge_name} has confirmed for their squad [{confirm_count}/{mogi.size}]\n"
             # if squad isn't full
-            if confirm_count != mogi.size:
-                msg += "Missing players: "
+            if confirm_count != len(player_team.players):
+                msg += "Unconfirmed players: "
                 msg += ", ".join([pl.lounge_name for pl in player_team.get_unconfirmed()])
+                msg += "\n"
+            if len(player_team.players) < mogi.size:
+                msg += f"Squad requires {mogi.size-len(player_team.players)} more players to join the mogi list\n"
             # if squad is full
-            else:
+            if confirm_count == mogi.size:
+                player_team.confirmed_at = datetime.now(timezone.utc)
                 msg += f"`Squad successfully added to mogi list [{mogi.count_registered()} teams]`:\n"
                 for i, pl in enumerate(player_team.players):
                     msg += f"`{i+1}.` {pl.member.mention} {pl.lounge_name} ({pl.mmr} MMR)\n"
@@ -140,51 +180,26 @@ class SquadQueue(commands.Cog):
             return
 
         # logic when player is not already in a squad
+        if mogi.size == 1 and len(members):
+            await self.queue_or_send(ctx, mogi.leaderboard, f"{ctx.author.display_name} didn't tag the correct number of players for this format (0), please try again")
+            return
+        if mogi.size > 1 and (len(members) == 0 or len(members) >= mogi.size):
+            await self.queue_or_send(ctx, mogi.leaderboard, f"{ctx.author.display_name} didn't tag the correct number of people for this format (1-{mogi.size-1}), please try again")
+            return
         
-        if len(members) != (mogi.size - 1):
-            await self.queue_or_send(ctx, mogi.leaderboard, f"{ctx.author.display_name} didn't tag the correct number of people for this format ({mogi.size-1}), please try again")
+        member_list = [ctx.author]
+        member_list.extend(members)
+        found_players = await self.check_members(ctx, mogi, member_list)
+        if found_players is None:
             return
-        # input validation for pinged members
-        if len(members) != len(set(members)):
-            await self.queue_or_send(ctx, mogi.leaderboard, f"{ctx.author.mention}, duplicate players are not allowed for a squad, please try again")
-            return
-        for member in members:
-            player_team = mogi.check_player(member)
-            if player_team is not None:
-                p = player_team.get_player(member)
-                assert p is not None
-                msg = f"{p.lounge_name} is already in a squad for this event `("
-                msg += ", ".join([pl.lounge_name for pl in player_team.players])
-                msg += ")` They should type `!d` if this is an error."
-                await self.queue_or_send(ctx, mogi.leaderboard, msg)
-                return
-            if member == ctx.author:
-                await self.queue_or_send(ctx, mogi.leaderboard, f"{ctx.author.mention}, duplicate players are not allowed for a squad, please try again")
-                return
-        # checking players' mmr
-        check_players = [ctx.author]
-        check_players.extend(members)
-        players = await get_mmr(mogi.leaderboard, check_players)
-        not_found = []
-        found_players: list[Player] = []
-        for i, player in enumerate(players):
-            if player is None:
-                not_found.append(check_players[i].display_name)
-            else:
-                found_players.append(player)
-        if len(not_found) > 0:
-            msg = f"{ctx.author.mention} MMR for the following players could not be found: "
-            msg += ", ".join(not_found)
-            msg += ". Please contact a staff member for help"
-            await self.queue_or_send(ctx, mogi.leaderboard, msg)
-            return
+        
         found_players[0].confirmed = True
         squad = Team(found_players)
         mogi.teams.append(squad)
-        if len(players) > 1:
+        if len(found_players) > 1:
             msg = f"{found_players[0].lounge_name} has created a squad with "
             msg += ", ".join([p.lounge_name for p in found_players[1:]])
-            msg += f"; each player must type `!c` to join the queue [1/{mogi.size}]\n"
+            msg += f"; each player must type `!c` to join the queue `[1/{mogi.size}]`\n"
             await self.queue_or_send(ctx, mogi.leaderboard, msg)
         else:
             await self.queue_or_send(ctx, mogi.leaderboard, f"{found_players[0].lounge_name} has joined the mogi `[{mogi.count_registered()} players]`")
@@ -194,7 +209,7 @@ class SquadQueue(commands.Cog):
     @commands.command(aliases=['d'])
     @commands.max_concurrency(number=1,wait=True)
     @commands.guild_only()
-    async def drop(self, ctx: commands.Context):
+    async def drop(self, ctx: commands.Context[SquadQueueBot]):
         """Remove your squad from a mogi"""
         mogi = self.get_mogi(ctx)
         if mogi is None:
@@ -219,7 +234,7 @@ class SquadQueue(commands.Cog):
     @commands.command()
     @commands.max_concurrency(number=1, wait=True)
     @commands.guild_only()
-    async def sub(self, ctx: commands.Context, sub_out:discord.Member, sub_in:discord.Member):
+    async def sub(self, ctx: commands.Context[SquadQueueBot], sub_out:discord.Member, sub_in:discord.Member):
         """Replace a player on your team"""
         mogi = self.get_mogi(ctx)
         if mogi is None:
@@ -253,12 +268,94 @@ class SquadQueue(commands.Cog):
             await self.queue_or_send(ctx, mogi.leaderboard, f"MMR for player {sub_in.display_name} could not be found! Please contact a staff member for help")
             return
         squad.sub_player(sub_out_player, sub_in_player[0])
+        squad.confirmed_at = None # subbed in player always needs to confirm, so make sure the confirmed date is set to None
         await self.queue_or_send(ctx, mogi.leaderboard, f"{sub_out_player.lounge_name} has been replaced with {sub_in_player[0].lounge_name} in the squad `{str(squad)}`; they must type `!c` to confirm")
+
+    @commands.command(name="add", aliases=['a'])
+    @commands.max_concurrency(number=1, wait=True)
+    @commands.guild_only()
+    async def add_player_to_squad(self, ctx: commands.Context[SquadQueueBot], members:commands.Greedy[discord.Member]):
+        """Tag players to invite them to your squad for a mogi"""
+        mogi = self.get_mogi(ctx)
+        if mogi is None:
+            return
+        if (not await self.is_started(ctx, mogi)
+                or not await self.is_gathering(ctx, mogi)):
+            return
+
+        assert isinstance(ctx.author, discord.Member)
+        # logic when player is already in squad
+        player_team = mogi.check_player(ctx.author)
+        if player_team is None:
+            await self.queue_or_send(ctx, mogi.leaderboard, f"{ctx.author.mention} is not currently in a squad for this event; type `!c @partnerNames`")
+            return
+        if mogi.size == 1:
+            await self.queue_or_send(ctx, mogi.leaderboard, f"{ctx.author.mention}, this command cannot be used in FFA")
+            return
+        if len(player_team.players) == mogi.size:
+            await self.queue_or_send(ctx, mogi.leaderboard, 
+                                     f"{ctx.author.mention}'s squad already has the maximum number of players for this format ({mogi.size})")
+            return 
+        if len(player_team.players) + len(members) > mogi.size:
+            await self.queue_or_send(ctx, mogi.leaderboard, 
+                                     f"{ctx.author.mention}, your squad currently has {len(player_team.players)} players and this event is {mogi.size}v{mogi.size}, so you can only add {mogi.size-len(player_team.players)} more players.")
+            return
         
-    @commands.command(aliases=['r'])
+        found_players = await self.check_members(ctx, mogi, members)
+        if found_players is None:
+            return
+        player_team.players.extend(found_players)
+        found_player_str = ", ".join([p.lounge_name for p in found_players])
+        existing_player_str = ", ".join([p.lounge_name for p in player_team.players])
+        num_confirmed = player_team.num_confirmed()
+        await self.queue_or_send(ctx, mogi.leaderboard, 
+                                 f"The players {found_player_str} have been added to the squad {existing_player_str}; each player must type `!c` to join the queue `[{num_confirmed}/{mogi.size}]`\n")
+
+    @commands.command(name="remove", aliases=['r'])
+    @commands.max_concurrency(number=1, wait=True)
+    @commands.guild_only()
+    async def remove_player_from_squad(self, ctx: commands.Context[SquadQueueBot], members:commands.Greedy[discord.Member]):
+        """Tag players to remove them from your squad for a mogi"""
+        mogi = self.get_mogi(ctx)
+        if mogi is None:
+            return
+        if (not await self.is_started(ctx, mogi)
+                or not await self.is_gathering(ctx, mogi)):
+            return
+
+        assert isinstance(ctx.author, discord.Member)
+        # logic when player is already in squad
+        player_team = mogi.check_player(ctx.author)
+        if player_team is None:
+            await self.queue_or_send(ctx, mogi.leaderboard, f"{ctx.author.mention} is not currently in a squad for this event; type `!c @partnerNames`\n")
+            return
+        if len(player_team.players) < 3:
+            await self.queue_or_send(ctx, mogi.leaderboard, f"{ctx.author.mention}, your squad must have at least 3 players to use this command\n")
+            return
+        if len(set(members)) != len(members):
+            await self.queue_or_send(ctx, mogi.leaderboard, f"{ctx.author.mention}, you cannot ping the same player more than once for this command; try again\n")
+            return None
+        remove_player_list: list[Player] = []
+        for member in members:
+            if member == ctx.author:
+                await self.queue_or_send(ctx, mogi.leaderboard, f"{ctx.author.mention}, you cannot remove yourself from a squad; use `!d` to drop your entire squad\n")
+                return
+            p = player_team.get_player(member)
+            if not p:
+                await self.queue_or_send(ctx, mogi.leaderboard, f"{ctx.author.mention}, {member.display_name} is not in your squad for this event; please try again\n")
+                return
+            remove_player_list.append(p)
+        for p in remove_player_list:
+            player_team.players.remove(p)
+        player_team.confirmed_at = None
+        player_str = ", ".join([p.lounge_name for p in remove_player_list])
+        remaining_str = ", ".join([p.lounge_name for p in player_team.players])
+        await self.queue_or_send(ctx, mogi.leaderboard, f"The players {player_str} have been removed from the squad {remaining_str}; squad now needs {mogi.size-len(player_team.players)} more players to join the mogi list\n")
+    
+    @commands.command(name="removesquad", aliases=['rs'])
     @commands.max_concurrency(number=1,wait=True)
     @commands.guild_only()
-    async def remove(self, ctx: commands.Context, member: discord.Member):
+    async def remove_squad_with_member(self, ctx: commands.Context, member: discord.Member):
         """Removes the mentioned player's squad from the mogi list"""
         if not await self.has_roles(ctx):
             return
@@ -308,11 +405,14 @@ class SquadQueue(commands.Cog):
     def get_list_messages(self, mogi: Mogi):
         mogi_list = mogi.confirmed_list()
         sorted_mogi_list = sorted(mogi_list, reverse=True)
+        late_team_index = (len(mogi_list) // mogi.room_size) * mogi.room_size # index of first late team, if any
+        late_teams = mogi_list[late_team_index:]
         msg = f""
-        for i in range(len(sorted_mogi_list)):
+        for i, team in enumerate(sorted_mogi_list):
             msg += f"`{i+1}.` "
-            msg += ", ".join([p.lounge_name for p in sorted_mogi_list[i].players])
-            msg += f" ({sorted_mogi_list[i].avg_mmr:.1f} MMR)\n"
+            msg += ", ".join([p.lounge_name for p in team.players])
+            late_str = " `*`" if team in late_teams else ""
+            msg += f" ({team.avg_mmr:.1f} MMR) {late_str}\n"
         players_per_mogi = mogi.room_size
         if(len(sorted_mogi_list) % (players_per_mogi/mogi.size) != 0):
             num_next = int(len(sorted_mogi_list) % (players_per_mogi/mogi.size))
@@ -930,8 +1030,13 @@ class SquadQueue(commands.Cog):
         if players[0] is None:
             return
         players[0].confirmed = True
-        squad = Team([players[0]]*mogi.size)
         for i in range(100):
+            # edit the lounge names a bit to make testing easier
+            new_player = Player(players[0].member, players[0].lounge_name+f"{i}", players[0].mmr)
+            new_player.confirmed = True
+            squad = Team([new_player]*mogi.size)
+            # this should put the teams in reverse confirmation order
+            squad.confirmed_at = datetime.now(timezone.utc)-timedelta(minutes=i)
             mogi.teams.append(squad)
         await ctx.send(f"Added {ctx.author.display_name} 100 times")
         await self.check_room_channels(mogi)

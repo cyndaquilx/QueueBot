@@ -271,7 +271,7 @@ class SquadQueue(commands.Cog):
         squad.confirmed_at = None # subbed in player always needs to confirm, so make sure the confirmed date is set to None
         await self.queue_or_send(ctx, mogi.leaderboard, f"{sub_out_player.lounge_name} has been replaced with {sub_in_player[0].lounge_name} in the squad `{str(squad)}`; they must type `!c` to confirm")
 
-    @commands.command(name="add", aliases=['a'])
+    @commands.command(name="addplayer", aliases=['ap'])
     @commands.max_concurrency(number=1, wait=True)
     @commands.guild_only()
     async def add_player_to_squad(self, ctx: commands.Context[SquadQueueBot], members:commands.Greedy[discord.Member]):
@@ -311,7 +311,7 @@ class SquadQueue(commands.Cog):
         await self.queue_or_send(ctx, mogi.leaderboard, 
                                  f"The players {found_player_str} have been added to the squad {existing_player_str}; each player must type `!c` to join the queue `[{num_confirmed}/{mogi.size}]`\n")
 
-    @commands.command(name="remove", aliases=['r'])
+    @commands.command(name="removeplayer", aliases=['rp'])
     @commands.max_concurrency(number=1, wait=True)
     @commands.guild_only()
     async def remove_player_from_squad(self, ctx: commands.Context[SquadQueueBot], members:commands.Greedy[discord.Member]):

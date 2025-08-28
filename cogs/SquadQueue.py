@@ -304,7 +304,7 @@ class SquadQueue(commands.Cog):
         found_players = await self.check_members(ctx, mogi, members)
         if found_players is None:
             return
-        player_team.players.extend(found_players)
+        player_team.add_players(found_players)
         found_player_str = ", ".join([p.lounge_name for p in found_players])
         existing_player_str = ", ".join([p.lounge_name for p in player_team.players])
         num_confirmed = player_team.num_confirmed()
@@ -345,9 +345,7 @@ class SquadQueue(commands.Cog):
                 await self.queue_or_send(ctx, mogi.leaderboard, f"{ctx.author.mention}, {member.display_name} is not in your squad for this event; please try again\n")
                 return
             remove_player_list.append(p)
-        for p in remove_player_list:
-            player_team.players.remove(p)
-        player_team.confirmed_at = None
+        player_team.remove_players(remove_player_list)
         player_str = ", ".join([p.lounge_name for p in remove_player_list])
         remaining_str = ", ".join([p.lounge_name for p in player_team.players])
         await self.queue_or_send(ctx, mogi.leaderboard, f"The players {player_str} have been removed from the squad {remaining_str}; squad now needs {mogi.size-len(player_team.players)} more players to join the mogi list\n")

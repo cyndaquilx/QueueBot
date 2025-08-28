@@ -32,6 +32,16 @@ class Team:
                 return player
         return None
 
+    def add_players(self, players: list[Player]):
+        self.players.extend(players)
+        self.recalc_avg()
+
+    def remove_players(self, players: list[Player]):
+        for player in players:
+            self.players.remove(player)
+        self.confirmed_at = None
+        self.recalc_avg()
+
     def sub_player(self, sub_out: Player, sub_in: Player):
         for i, player in enumerate(self.players):
             if player == sub_out:

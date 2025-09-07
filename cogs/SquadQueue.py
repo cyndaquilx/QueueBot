@@ -403,7 +403,7 @@ class SquadQueue(commands.Cog):
     def get_list_messages(self, mogi: Mogi):
         mogi_list = mogi.confirmed_list()
         sorted_mogi_list = sorted(mogi_list, reverse=True)
-        late_team_index = (len(mogi_list) // mogi.room_size) * mogi.room_size # index of first late team, if any
+        late_team_index = (len(mogi_list) // int(mogi.room_size / mogi.size)) * int(mogi.room_size / mogi.size) # index of first late team, if any
         late_teams = mogi_list[late_team_index:]
         msg = f""
         for i, team in enumerate(sorted_mogi_list):

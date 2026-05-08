@@ -8,7 +8,7 @@ import json
 from models.Mogi import Mogi, Team, Room, Player
 from models.Config import LeaderboardConfig
 from models import SquadQueueBot
-from util import get_server_config, leaderboard_autocomplete, get_leaderboard_slash, format_autocomplete, get_mmr, room_size_autocomplete
+from util import get_server_config, leaderboard_autocomplete, get_leaderboard_slash, format_autocomplete, get_mmr
 
 class SquadQueue(commands.Cog):
     def __init__(self, bot: commands.Bot):
@@ -631,7 +631,8 @@ class SquadQueue(commands.Cog):
         players_per_mogi = mogi.room_size
         num_rooms = int(mogi.count_registered() / (players_per_mogi/mogi.size))
         if num_rooms == 0:
-            await mogi.mogi_channel.send(f"Not enough players to fill a room! Try this command with at least {int(players_per_mogi/mogi.size)} teams")
+            await mogi.mogi_channel.send(f"Not enough players to fill a room! This mogi will be cancelled.")
+            del self.ongoing_events[mogi.mogi_channel]
             return
         await self.lockdown(mogi.mogi_channel)
         mogi.making_rooms_run = True
@@ -738,7 +739,7 @@ class SquadQueue(commands.Cog):
                 if(mogi.start_time - timedelta(minutes=ts.queue_open_time)) < cur_time:
                     if mogi.mogi_channel in self.ongoing_events.keys() and self.ongoing_events[mogi.mogi_channel].gathering:
                         to_remove.append(i)
-                        await mogi.mogi_channel.send(f"Because there is an ongoing event right now, the following event has been removed:\n{self.get_event_str(mogi)}\n")
+                        await mogi.mogi_channel.send(f"Because there is an ongoing event right now, the following event has been removed:\n{mogi.get_discord_str()}\n")
                     else:
                         if mogi.mogi_channel in self.ongoing_events.keys():
                             if self.ongoing_events[mogi.mogi_channel].started:
@@ -841,11 +842,10 @@ class SquadQueue(commands.Cog):
     @app_commands.command(name="schedule_event")
     @app_commands.autocomplete(size=format_autocomplete)
     @app_commands.autocomplete(leaderboard=leaderboard_autocomplete)
-    @app_commands.autocomplete(room_size=room_size_autocomplete)
     @app_commands.guild_only()
     async def schedule_event(self, interaction:discord.Interaction[SquadQueueBot],
-                       sq_id: int, room_size: int, size:int,
-                       schedule_time:str, timezone:str, leaderboard: str | None):
+                       leaderboard: str, sq_id: int, size:int,
+                       schedule_time:str, timezone:str):
         """Schedules an SQ event in the given channel at the given time."""
         assert interaction.guild is not None
         ctx = await commands.Context.from_interaction(interaction)
@@ -876,10 +876,8 @@ class SquadQueue(commands.Cog):
             "Make sure your timezone is correct (with daylight savings taken into account, "
             "ex. EDT instead of EST if it's summer), and that you've entered the date if it's not today")
             return
+        room_size = lb.room_size
         size_name = f"{size}v{size}" if size > 1 else "FFA"
-        if room_size not in lb.valid_room_sizes:
-            await interaction.response.send_message(f"Invalid room size. Valid room sizes for this server are: {lb.valid_room_sizes}")
-            return
         if size not in lb.valid_formats:
             await interaction.response.send_message(f"Invalid format. Valid formats for this server are: {lb.valid_formats}")
             return
@@ -893,25 +891,23 @@ class SquadQueue(commands.Cog):
         if event_start_time < discord.utils.utcnow():
             #have to add 1 minute here, because utcnow() will technically be the past when the API request is sent
             event_start_time = discord.utils.utcnow() + timedelta(minutes=1)
-        discord_event = await interaction.guild.create_scheduled_event(name=f"SQ #{sq_id}: {room_size}p {size_name} gathering players",
+        
+        mogi = Mogi(sq_id, size, room_size, channel, lb, is_automated=True, start_time=actual_time)
+        if interaction.guild not in self.scheduled_events.keys():
+            self.scheduled_events[interaction.guild] = []
+        self.scheduled_events[interaction.guild].append(mogi)
+        event_str = mogi.get_discord_str()
+        #await interaction.response.send_message(f"Scheduled the following event:\n{event_str}")
+        await interaction.followup.send(f"Scheduled the following event:\n{event_str}")
+        # we make the discord event after the event has been successfully created because
+        # scheduled events have a very strict rate limit
+        discord_event = await interaction.guild.create_scheduled_event(name=f"{mogi.get_event_str()} gathering players",
                                                        start_time = event_start_time,
                                                        end_time = event_end_time,
                                                        privacy_level = discord.PrivacyLevel.guild_only,
                                                        entity_type = discord.EntityType.external,
                                                        location=channel.mention)
-        mogi = Mogi(sq_id, size, room_size, channel, lb, is_automated=True, start_time=actual_time, discord_event=discord_event)
-        if interaction.guild not in self.scheduled_events.keys():
-            self.scheduled_events[interaction.guild] = []
-        self.scheduled_events[interaction.guild].append(mogi)
-        event_str = self.get_event_str(mogi)
-        #await interaction.response.send_message(f"Scheduled the following event:\n{event_str}")
-        await interaction.followup.send(f"Scheduled the following event:\n{event_str}")
-
-    def get_event_str(self, mogi: Mogi):
-        assert mogi.start_time is not None
-        mogi_time = discord.utils.format_dt(mogi.start_time, style="F")
-        mogi_time_relative = discord.utils.format_dt(mogi.start_time, style="R")
-        return(f"`#{mogi.sq_id}` **{mogi.room_size}p {mogi.size}v{mogi.size}:** {mogi_time} - {mogi_time_relative}")
+        mogi.discord_event = discord_event
 
     @app_commands.command(name="remove_event")
     @app_commands.guild_only()
@@ -931,7 +927,7 @@ class SquadQueue(commands.Cog):
                 self.scheduled_events[interaction.guild].remove(event)
                 if event.discord_event:
                     await event.discord_event.cancel()
-                await interaction.response.send_message(f"Removed the following event:\n{self.get_event_str(event)}")
+                await interaction.response.send_message(f"Removed the following event:\n{event.get_discord_str()}")
                 return
         await interaction.response.send_message("This event number isn't in the schedule. Do `!view_schedule` to see the scheduled events.")
 
@@ -952,7 +948,7 @@ class SquadQueue(commands.Cog):
         if copy_paste == "cp":
             msg += "```"
         for event in server_schedule:
-            msg += f"{self.get_event_str(event)}\n"
+            msg += f"{event.get_discord_str()}\n"
             if len(msg) > 1500:
                 if copy_paste == "cp":
                     msg += "```"

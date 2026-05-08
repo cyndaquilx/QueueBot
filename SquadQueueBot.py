@@ -1,5 +1,6 @@
 import discord
 from discord.ext import commands
+from discord import app_commands
 import json
 import logging
 import asyncio
@@ -55,6 +56,24 @@ async def on_command_error(ctx, error):
         return
     if isinstance(error, GuildNotFoundException):
         await(await ctx.send("You cannot use this command in this server!")).delete(delay=10)
+        return
+    raise error
+
+@bot.tree.error
+async def on_app_command_error(interaction:discord.Interaction, error):
+    if isinstance(error, app_commands.MissingPermissions):
+        await interaction.response.send_message(f"You are missing the following permissions to use this command: " +
+            f"{','.join(error.missing_permissions)}", ephemeral=True)
+        return
+    if isinstance(error, LeaderboardNotFoundException):
+        await interaction.response.send_message("Please enter a valid leaderboard to use this command")
+        return
+    if isinstance(error, GuildNotFoundException):
+        await interaction.response.send_message("You cannot use this command in this server!")
+        return
+    if isinstance(error, app_commands.MissingAnyRole):
+        await interaction.response.send_message("You need one of the following roles to use this command: `%s`"
+                             % (", ".join([str(r) for r in error.missing_roles])))
         return
     raise error
 

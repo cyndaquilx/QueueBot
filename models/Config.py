@@ -15,16 +15,19 @@ class TimeSettings:
 
 @dataclass
 class LeaderboardConfig:
+    name: str
+    lb_name_in_string: bool # if this is true, it will show the lb name in the event string,
+                                    # for example if lb name is 24p, it will say "24p 2v2" instead of "2v2"
     website_credentials: WebsiteCredentials
     time_settings: TimeSettings
-    valid_room_sizes: list[int]
+    room_size: int
     valid_formats: list[int]
     join_channel: int
     list_channel: int
     pinged_member_ids: list[int] # discord IDs of members that get pinged into every room thread
     queue_messages: bool
     sec_between_queue_msgs: int
-
+    
 @dataclass
 class ServerConfig:
     admin_roles: list[int]

@@ -160,3 +160,28 @@ class Mogi:
             if room.thread.id == channel_id:
                 return room
         return None
+    
+    def get_event_str(self):
+        if self.leaderboard.lb_name_in_string:
+            lb_string = f"{self.leaderboard.name} "
+        else:
+            lb_string = ""
+        if self.size == 1:
+            size_string = "FFA"
+        else:
+            size_string = f"{self.size}v{self.size}"
+        return f"SQ #{self.sq_id}: {lb_string}{size_string}"
+    
+    def get_discord_str(self):
+        assert self.start_time is not None
+        mogi_time = discord.utils.format_dt(self.start_time, style="F")
+        mogi_time_relative = discord.utils.format_dt(self.start_time, style="R")
+        if self.leaderboard.lb_name_in_string:
+            lb_string = f"{self.leaderboard.name} "
+        else:
+            lb_string = ""
+        if self.size == 1:
+            size_string = "FFA"
+        else:
+            size_string = f"{self.size}v{self.size}"
+        return(f"`#{self.sq_id}` **{lb_string}{size_string}:** {mogi_time} - {mogi_time_relative}")

@@ -9,6 +9,7 @@ from models.Mogi import Mogi, Team, Room, Player
 from models.Config import LeaderboardConfig
 from models import SquadQueueBot
 from util import get_server_config, leaderboard_autocomplete, get_leaderboard_slash, format_autocomplete, get_mmr
+import asyncio
 
 class SquadQueue(commands.Cog):
     def __init__(self, bot: commands.Bot):
@@ -454,33 +455,36 @@ class SquadQueue(commands.Cog):
     
     @tasks.loop(seconds=60)
     async def list_task(self):
-        if len(self.ongoing_events) == 0:
-            return
-        for mogi in self.ongoing_events.values():
-            list_channel_id = mogi.leaderboard.list_channel
-            list_channel = self.bot.get_channel(list_channel_id)
-            if not list_channel:
-                continue
-            assert isinstance(list_channel, discord.TextChannel)
-            if not mogi.gathering:
-                await self.delete_list_messages(list_channel, 0)
-                continue
+        try:
+            if len(self.ongoing_events) == 0:
+                return
+            for mogi in self.ongoing_events.values():
+                list_channel_id = mogi.leaderboard.list_channel
+                list_channel = self.bot.get_channel(list_channel_id)
+                if not list_channel:
+                    continue
+                assert isinstance(list_channel, discord.TextChannel)
+                if not mogi.gathering:
+                    await self.delete_list_messages(list_channel, 0)
+                    continue
 
-            new_messages = self.get_list_messages(mogi)
-            await self.delete_list_messages(list_channel, len(new_messages))
+                new_messages = self.get_list_messages(mogi)
+                await self.delete_list_messages(list_channel, len(new_messages))
 
-            list_messages = self.list_messages[list_channel]
-            try:
-                for i, message in enumerate(new_messages):
-                    if i < len(list_messages):
-                        old_message = list_messages[i]
-                        await old_message.edit(content=message)
-                    else:
-                        new_message = await list_channel.send(message)
-                        list_messages.append(new_message)
-            except Exception as e:
-               print(e, flush=True)
-               await self.delete_list_messages(list_channel, 0)
+                list_messages = self.list_messages[list_channel]
+                try:
+                    for i, message in enumerate(new_messages):
+                        if i < len(list_messages):
+                            old_message = list_messages[i]
+                            await old_message.edit(content=message)
+                        else:
+                            new_message = await list_channel.send(message)
+                            list_messages.append(new_message)
+                except Exception as e:
+                    print(e, flush=True)
+                    await self.delete_list_messages(list_channel, 0)
+        except:
+            pass
             
     async def delete_list_messages(self, channel: discord.TextChannel, new_list_size: int):
         try:
@@ -839,28 +843,20 @@ class SquadQueue(commands.Cog):
             event_str = "none"
         await interaction.response.send_message(f"`{event_str}`", ephemeral=True)
 
-    @app_commands.command(name="schedule_event")
-    @app_commands.autocomplete(size=format_autocomplete)
-    @app_commands.autocomplete(leaderboard=leaderboard_autocomplete)
-    @app_commands.guild_only()
-    async def schedule_event(self, interaction:discord.Interaction[SquadQueueBot],
-                       leaderboard: str, sq_id: int, size:int,
-                       schedule_time:str, timezone:str):
-        """Schedules an SQ event in the given channel at the given time."""
-        assert interaction.guild is not None
-        ctx = await commands.Context.from_interaction(interaction)
+    async def schedule_event(self, ctx: commands.Context[SquadQueueBot], sq_id: int,
+                             leaderboard: str, size:int, schedule_time: str, timezone: str):
         lb = get_leaderboard_slash(ctx, leaderboard)
         if not await self.has_roles(ctx):
-            await interaction.response.send_message("You do not have permissions to use this command",ephemeral=True)
+            await ctx.send("You do not have permissions to use this command",ephemeral=True)
             return
         actual_time = self.getTime(schedule_time, timezone)
         if actual_time is None:
-            await interaction.response.send_message(f"I couldn't understand your time, so I couldn't schedule the event.",
+            await ctx.send(f"I couldn't understand your time, so I couldn't schedule the event.",
             ephemeral=True)
             return
         if actual_time < datetime.now():
             bad_time = discord.utils.format_dt(actual_time, style="F")
-            await interaction.response.send_message(f"That time is in the past! ({bad_time})"
+            await ctx.send(f"That time is in the past! ({bad_time})"
             "Make sure your timezone is correct (with daylight savings taken into account, "
             "ex. EDT instead of EST if it's summer), and that you've entered the date if it's not today")
             return
@@ -871,7 +867,7 @@ class SquadQueue(commands.Cog):
         event_end_time = event_start_time + joining_time
         if event_end_time < discord.utils.utcnow():
             bad_time = discord.utils.format_dt(event_end_time, style="F")
-            await interaction.response.send_message("The queue for this event would end in the past! "
+            await ctx.send("The queue for this event would end in the past! "
             f"({bad_time}) "
             "Make sure your timezone is correct (with daylight savings taken into account, "
             "ex. EDT instead of EST if it's summer), and that you've entered the date if it's not today")
@@ -879,35 +875,80 @@ class SquadQueue(commands.Cog):
         room_size = lb.room_size
         size_name = f"{size}v{size}" if size > 1 else "FFA"
         if size not in lb.valid_formats:
-            await interaction.response.send_message(f"Invalid format. Valid formats for this server are: {lb.valid_formats}")
+            await ctx.send(f"Invalid format. Valid formats for this server are: {lb.valid_formats}")
             return
         if room_size % size != 0:
-            await interaction.response.send_message(f"The entered format ({size_name}) is not divisible by the specified room size ({room_size}).")
+            await ctx.send(f"The entered format ({size_name}) is not divisible by the specified room size ({room_size}).")
             return
         channel = ctx.bot.get_channel(lb.join_channel)
+        assert isinstance(channel, discord.TextChannel)
+        assert ctx.guild is not None
 
-        await interaction.response.defer(thinking=True)
+        await ctx.defer()
 
         if event_start_time < discord.utils.utcnow():
             #have to add 1 minute here, because utcnow() will technically be the past when the API request is sent
             event_start_time = discord.utils.utcnow() + timedelta(minutes=1)
         
         mogi = Mogi(sq_id, size, room_size, channel, lb, is_automated=True, start_time=actual_time)
-        if interaction.guild not in self.scheduled_events.keys():
-            self.scheduled_events[interaction.guild] = []
-        self.scheduled_events[interaction.guild].append(mogi)
+        if ctx.guild not in self.scheduled_events.keys():
+            self.scheduled_events[ctx.guild] = []
+        self.scheduled_events[ctx.guild].append(mogi)
         event_str = mogi.get_discord_str()
-        #await interaction.response.send_message(f"Scheduled the following event:\n{event_str}")
-        await interaction.followup.send(f"Scheduled the following event:\n{event_str}")
+        await ctx.send(f"Scheduled the following event:\n{event_str}")
         # we make the discord event after the event has been successfully created because
         # scheduled events have a very strict rate limit
-        discord_event = await interaction.guild.create_scheduled_event(name=f"{mogi.get_event_str()} gathering players",
+        discord_event = await ctx.guild.create_scheduled_event(name=f"{mogi.get_event_str()} gathering players",
                                                        start_time = event_start_time,
                                                        end_time = event_end_time,
                                                        privacy_level = discord.PrivacyLevel.guild_only,
                                                        entity_type = discord.EntityType.external,
                                                        location=channel.mention)
         mogi.discord_event = discord_event
+
+    @app_commands.command(name="schedule_event")
+    @app_commands.autocomplete(size=format_autocomplete)
+    @app_commands.autocomplete(leaderboard=leaderboard_autocomplete)
+    @app_commands.guild_only()
+    async def schedule_event_slash(self, interaction:discord.Interaction[SquadQueueBot],
+                       sq_id: int, leaderboard: str, size:int,
+                       schedule_time:str, timezone:str):
+        """Schedules an SQ event in the given channel at the given time."""
+        assert interaction.guild is not None
+        ctx = await commands.Context.from_interaction(interaction)
+        await self.schedule_event(ctx, sq_id, leaderboard, size, schedule_time, timezone)
+
+    @commands.command()
+    @commands.guild_only()
+    @commands.max_concurrency(number=1, wait=False)
+    async def scheduleMany(self, ctx, *, args:str):
+        """Schedules many SQ events at once.
+            Usage: !schedulemany id;lb;size;schedule_time;timezone
+                id2;lb2;size2;schedule_time2;timezone2"""
+        if not await self.has_roles(ctx):
+            return
+        lines = args.split("\n")
+        arg_list: list[tuple[int, str, int, str, str]] = []
+        for line in lines:
+            if not line:
+                continue
+            line_args = [a.strip() for a in line.split(";")]
+            if len(line_args) != 5:
+                await ctx.send(f"The line `{line}` has {len(line_args)} arguments when 5 are expected.")
+                return
+            sq_id, lb, size, schedule_time, timezone = line_args
+            if not sq_id.isdigit():
+                await ctx.send(f"Expected integer for SQ ID argument ({sq_id})")
+                return
+            if not size.isdigit():
+                await ctx.send(f"Expected integer for size argument ({size})")
+                return
+            arg_list.append((int(sq_id), lb, int(size), schedule_time, timezone))
+        to_await = []
+        for event in arg_list:
+            sq_id, lb, size, schedule_time, timezone = event
+            to_await.append(self.schedule_event(ctx, sq_id, lb, size, schedule_time, timezone))
+        await asyncio.gather(*to_await)
 
     @app_commands.command(name="remove_event")
     @app_commands.guild_only()
@@ -933,8 +974,8 @@ class SquadQueue(commands.Cog):
 
     @commands.command()
     @commands.guild_only()
-    async def view_schedule(self, ctx: commands.Context, copy_paste=""):
-        """View the SQ schedule. Use !view_schedule cp to get a copy/pastable version"""
+    async def view_schedule(self, ctx: commands.Context, print_format=""):
+        """View the SQ schedule. Use !view_schedule cp to get a copy/pastable version, !view_schedule many for use in !schedulemany command"""
         assert ctx.guild is not None
         server_events = self.scheduled_events.get(ctx.guild, None)
         if server_events is None:
@@ -945,21 +986,33 @@ class SquadQueue(commands.Cog):
             await ctx.send("There are no SQ events scheduled in this server yet. Use /schedule_event to schedule one.")
             return
         msg = ""
-        if copy_paste == "cp":
-            msg += "```"
-        for event in server_schedule:
-            msg += f"{event.get_discord_str()}\n"
-            if len(msg) > 1500:
-                if copy_paste == "cp":
+        if print_format.lower() == "many":
+            msg += "```!schedulemany\n"
+            for event in server_schedule:
+                msg += f"{event.sq_id};{event.leaderboard.name};{event.size};{event.start_time.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M") if event.start_time else ""};UTC\n"
+                if len(msg) > 1500:
                     msg += "```"
+                    await ctx.send(msg)
+                    msg = "```"
+            if len(msg) > 3:
+                msg += "```"
                 await ctx.send(msg)
-                msg = ""
-                if copy_paste == "cp":
-                    msg += "```"
-        if copy_paste == "cp":
-            msg += "```"
-        if len(msg):
-            await ctx.send(msg)
+        else:
+            if print_format.lower() == "cp":
+                msg += "```"
+            for event in server_schedule:
+                msg += f"{event.get_discord_str()}\n"
+                if len(msg) > 1500:
+                    if print_format.lower() == "cp":
+                        msg += "```"
+                    await ctx.send(msg)
+                    msg = ""
+                    if print_format.lower() == "cp":
+                        msg += "```"
+            if print_format.lower() == "cp":
+                msg += "```"
+            if len(msg):
+                await ctx.send(msg)
 
     @commands.command()
     @commands.guild_only()
